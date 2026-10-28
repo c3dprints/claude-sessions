@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Sessions</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #0f1115; --surface: #171a21; --surface-2: #1d212a; --border: #272c37;
+    --text: #e8eaef; --muted: #8d95a5; --faint: #5c6473;
+    --accent: #d97757; --accent-text: #fff;
+    --working: #5b9cf6; --waiting: #e8b04b; --closed: #ef6b6b; --ok: #4fbf8a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e1e4ea;
+      --text: #1b1f27; --muted: #5d6573; --faint: #9aa1ad;
+      --working: #2f74e0; --waiting: #b97a06; --closed: #d23f3f; --ok: #1f9461;
+      --shadow: 0 1px 2px rgba(20,24,33,.06);
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  button { font: inherit; cursor: pointer; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 24px 40px; }
+
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  header img { width: 30px; height: 30px; }
+  header h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 8px; }
+  .btn.ghost:hover { color: var(--text); background: var(--surface-2); }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  .menu { position: relative; }
+  .menu > summary { list-style: none; }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 300px; max-width: 460px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .menu-pop button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-pop button:hover { background: var(--surface-2); }
+  .menu-pop .hint { color: var(--muted); font-size: 12px; padding: 4px 10px 6px; }
+
+  .banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; border: 1px solid color-mix(in srgb, var(--closed) 45%, transparent); background: color-mix(in srgb, var(--closed) 12%, var(--surface)); }
+  .banner.offline { border-color: var(--closed); }
+  .banner .msg { flex: 1; }
+  .banner .msg b { font-weight: 600; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; }
+  h2 .count { color: var(--faint); }
+  h2 input { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px 12px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--st); }
+  .card.busy { --st: var(--working); }
+  .card.waiting { --st: var(--waiting); border-color: color-mix(in srgb, var(--waiting) 50%, var(--border)); }
+  .card.idle { --st: var(--ok); }
+  .card.other { --st: var(--faint); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--st); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+  .busy .dot { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--working) 60%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
+  .since { color: var(--faint); font-weight: 400; }
+  .tag { margin-left: auto; font: 11.5px ui-monospace, Consolas, monospace; color: var(--faint); }
+  .title { font-size: 15.5px; font-weight: 600; margin: 2px 0 0; overflow-wrap: anywhere; }
+  .title .orig { display: block; font-size: 12px; font-weight: 400; color: var(--faint); }
+  .meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .prompt { color: var(--muted); font-size: 13px; border-left: 2px solid var(--border); padding-left: 9px; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .actions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .actions .ver { margin-left: auto; color: var(--faint); font-size: 11.5px; }
+  .rename { width: 100%; font: inherit; font-size: 15px; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--accent); background: var(--surface-2); color: var(--text); }
+
+  .empty { color: var(--muted); padding: 22px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
+
+  .list { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .item { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 10px 14px; border-top: 1px solid var(--border); align-items: center; }
+  .item:first-child { border-top: 0; }
+  .item .t { font-weight: 600; overflow-wrap: anywhere; }
+  .item .s { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .item .s .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
+  .item .a { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
+  .item.fresh { background: color-mix(in srgb, var(--closed) 8%, transparent); }
+  .closed-ago { color: var(--closed); }
+  .more { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: none; color: var(--muted); padding: 9px; }
+  .more:hover { color: var(--text); background: var(--surface-2); }
+  .search { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 240px; }
+
+  footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; color: var(--muted); font-size: 13px; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .upd { display: inline-flex; gap: 8px; align-items: center; }
+  .upd.ready { color: var(--ok); font-weight: 600; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  .toast.err { background: var(--closed); color: #fff; }
+  @media (max-width: 640px) {
+    .wrap { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .search { width: 100%; }
+    h2 { flex-wrap: wrap; }
+    .item { grid-template-columns: 1fr; }
+    .item .a { grid-row: auto; grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/icon.svg" alt="">
+    <h1>Claude Sessions</h1>
+    <div class="chips" id="chips"></div>
+    <div class="spacer"></div>
+    <details class="menu" id="newMenu">
+      <summary class="btn primary">+ New session</summary>
+      <div class="menu-pop">
+        <div class="hint">Open Claude in a new Windows Terminal tab, in:</div>
+        <div id="folders"></div>
+      </div>
+    </details>
+  </header>
+
+  <div id="banner"></div>
+
+  <h2>Open now <span class="count" id="liveCount"></span></h2>
+  <div id="live"></div>
+
+  <div id="closedWrap" hidden>
+    <h2>Recently closed <span class="count" id="closedCount"></span></h2>
+    <div class="list" id="closed"></div>
+  </div>
+
+  <h2>History <span class="count" id="histCount"></span>
+    <input class="search" id="search" type="search" placeholder="Search titles, prompts, folders" autocomplete="off">
+  </h2>
+  <div class="list" id="history"></div>
+
+  <footer>
+    <span id="version"></span>
+    <span class="upd" id="update"></span>
+    <span class="spacer"></span>
+    <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
+    <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+let S = null;
+let editing = null;   // sessionId being renamed; live cards are not redrawn while set
+let histLimit = 15;
+let offline = false;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function ago(t) {
+  if (!t) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+function dur(t) { const a = ago(t); return a === 'just now' ? 'now' : a.replace(' ago', ''); }
+function home(p) { return p ? String(p).replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~') : 'unknown folder'; }
+function label(s) { return s.nickname || s.title || s.firstPrompt || s.name || 'Untitled session'; }
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Claude-Sessions': '1' },
+    body: JSON.stringify(body),
+  };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+let toastTimer;
+function toast(msg, err) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, err ? 5000 : 2500);
+}
+
+function statusOf(s) {
+  if (s.status === 'busy') return { cls: 'busy', text: 'Working' };
+  if (s.status === 'waiting') return { cls: 'waiting', text: 'Needs you' };
+  if (s.status === 'idle') return { cls: 'idle', text: 'Idle' };
+  return { cls: 'other', text: s.status || 'Unknown' };
+}
+
+function renderHeader() {
+  const n = (st) => S.live.filter((s) => s.status === st).length;
+  const chip = (color, count, text) => `<span class="chip"><span class="dot" style="background:var(${color})"></span><b>${count}</b> ${text}</span>`;
+  const waiting = n('waiting');
+  $('#chips').innerHTML =
+    `<span class="chip"><b>${S.live.length}</b> open</span>` +
+    chip('--working', n('busy'), 'working') +
+    (waiting ? chip('--waiting', waiting, 'need you') : '') +
+    chip('--ok', n('idle'), 'idle');
+  document.title = (waiting ? `(${waiting} need you) ` : `(${S.live.length}) `) + 'Claude Sessions';
+  $('#folders').innerHTML = S.folders.length
+    ? S.folders.map((f) => `<button data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')
+    : '<div class="hint">No folders yet. Start one session from a terminal first.</div>';
+}
+
+function renderBanner() {
+  if (offline) {
+    $('#banner').innerHTML = `<div class="banner offline"><div class="msg"><b>The dashboard server stopped.</b> Open Claude Sessions from the Desktop shortcut to start it again.</div></div>`;
+    return;
+  }
+  const fresh = S.closed.filter((c) => Date.now() - c.closedAt < 15 * 60000);
+  if (!fresh.length) { $('#banner').innerHTML = ''; return; }
+  const c = fresh[0];
+  const more = fresh.length > 1 ? ` (and ${fresh.length - 1} more below)` : '';
+  $('#banner').innerHTML = `<div class="banner"><div class="msg"><b>${esc(label(c))}</b> was closed ${ago(c.closedAt)}${more}. Closed by accident?</div>
+    <button class="btn primary" data-act="resume" data-id="${esc(c.sessionId)}">Reopen</button>
+    <button class="btn ghost" data-act="dismiss" data-id="${esc(c.sessionId)}">Dismiss</button></div>`;
+}
+
+function renderLive() {
+  $('#liveCount').textContent = S.live.length;
+  if (!S.live.length) {
+    $('#live').innerHTML = '<div class="empty">No Claude sessions are open right now.</div>';
+    return;
+  }
+  $('#live').innerHTML = '<div class="grid">' + S.live.map((s) => {
+    const st = statusOf(s);
+    const orig = s.nickname && s.title && s.nickname !== s.title ? `<span class="orig">${esc(s.title)}</span>` : '';
+    const titleHtml = editing === s.sessionId
+      ? `<input class="rename" data-id="${esc(s.sessionId)}" value="${esc(s.nickname || s.title || '')}" maxlength="80" placeholder="Name this session">`
+      : `<div class="title">${esc(label(s))}${orig}</div>`;
+    return `<div class="card ${st.cls}">
+      <div class="row"><span class="status"><span class="dot"></span>${st.text} <span class="since">· ${dur(s.statusSince)}</span></span>
+        <span class="tag" title="Session ${esc(s.sessionId)}, process ${s.pid}">${esc(s.name || '')}</span></div>
+      ${titleHtml}
+      <div class="meta"><span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span><span>opened ${ago(s.startedAt)}</span>${s.kind !== 'interactive' ? `<span>${esc(s.kind)}</span>` : ''}</div>
+      ${s.lastPrompt ? `<div class="prompt" title="${esc(s.lastPrompt)}">${esc(s.lastPrompt)}</div>` : ''}
+      <div class="actions">
+        <button class="btn primary" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>
+        <button class="btn ghost" data-act="rename" data-id="${esc(s.sessionId)}">Rename</button>
+        <button class="btn ghost" data-act="copy" data-id="${esc(s.sessionId)}" title="Copy the resume command">Copy ID</button>
+        <span class="ver">v${esc(s.version || '?')}</span>
+      </div></div>`;
+  }).join('') + '</div>';
+  const inp = document.querySelector('.rename');
+  if (inp && document.activeElement !== inp) { inp.focus(); inp.select(); }
+}
+
+function itemHtml(s, closed) {
+  const when = closed ? `<span class="closed-ago">closed ${ago(s.closedAt)}</span>` : `<span>active ${ago(s.lastActivity)}</span>`;
+  const fresh = closed && Date.now() - s.closedAt < 15 * 60000 ? ' fresh' : '';
+  const p = s.lastPrompt || s.firstPrompt;
+  return `<div class="item${fresh}">
+    <div class="t">${esc(label(s))}</div>
+    <div class="a">
+      <button class="btn${closed ? ' primary' : ''}" data-act="resume" data-id="${esc(s.sessionId)}">Reopen</button>
+      ${closed ? `<button class="btn ghost" data-act="dismiss" data-id="${esc(s.sessionId)}" title="Remove from this list">✕</button>` : ''}
+    </div>
+    <div class="s">${when}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span>${p ? `<span class="p" title="${esc(p)}">${esc(p)}</span>` : ''}</div>
+  </div>`;
+}
+
+function renderClosed() {
+  $('#closedWrap').hidden = !S.closed.length;
+  $('#closedCount').textContent = S.closed.length;
+  $('#closed').innerHTML = S.closed.map((c) => itemHtml(c, true)).join('');
+}
+
+function renderHistory() {
+  const q = $('#search').value.trim().toLowerCase();
+  const all = S.history.filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
+  $('#histCount').textContent = all.length;
+  const shown = all.slice(0, histLimit);
+  $('#history').innerHTML = shown.length
+    ? shown.map((h) => itemHtml(h, false)).join('') + (all.length > shown.length ? `<button class="more" data-act="more">Show ${Math.min(15, all.length - shown.length)} more</button>` : '')
+    : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : 'No other sessions in the last 14 days.'}</div>`;
+}
+
+function renderFooter() {
+  $('#version').textContent = `Claude Sessions v${S.app.version}`;
+  const u = S.update || {};
+  let html;
+  if (u.busy) html = 'Checking for updates…';
+  else if (u.available) html = `<span class="upd ready">${esc(u.latest)} is ready</span> ${u.mode === 'release' ? '<button class="btn primary" data-act="install">Install and restart</button>' : '<span>(dev copy: git pull)</span>'}`;
+  else if (u.error) html = `<span title="${esc(u.error)}">Update check failed</span> <button class="btn ghost" data-act="check">Retry</button>`;
+  else if (u.checkedAt) html = `Up to date · checked ${ago(u.checkedAt)} <button class="btn ghost" data-act="check">Check now</button>`;
+  else html = '<button class="btn ghost" data-act="check">Check for updates</button>';
+  $('#update').innerHTML = html;
+  $('#optStartup').checked = S.settings.startWithWindows;
+  $('#optAuto').checked = S.settings.autoUpdate;
+}
+
+function render() {
+  renderHeader();
+  renderBanner();
+  if (!editing) renderLive();
+  renderClosed();
+  renderHistory();
+  renderFooter();
+}
+
+async function refresh() {
+  try {
+    S = await api('/api/state');
+    offline = false;
+    render();
+  } catch {
+    offline = true;
+    renderBanner();
+  }
+}
+
+async function act(name, body, okMsg) {
+  try {
+    const r = await api(name, body);
+    if (okMsg) toast(okMsg);
+    await refresh();
+    return r;
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function saveRename(inp) {
+  const id = inp.dataset.id;
+  editing = null;
+  act('/api/rename', { sessionId: id, name: inp.value }, 'Saved');
+}
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const id = b.dataset.id;
+  switch (b.dataset.act) {
+    case 'focus': b.disabled = true; await act('/api/focus', { sessionId: id }); b.disabled = false; break;
+    case 'resume': b.disabled = true; await act('/api/resume', { sessionId: id }, 'Reopening in a new tab…'); break;
+    case 'dismiss': act('/api/closed/dismiss', { sessionId: id }); break;
+    case 'rename': editing = id; renderLive(); break;
+    case 'copy':
+      try { await navigator.clipboard.writeText(`claude --resume ${id}`); toast('Copied: claude --resume ' + id.slice(0, 8) + '…'); }
+      catch { toast(id); }
+      break;
+    case 'new': $('#newMenu').open = false; act('/api/new', { cwd: b.dataset.cwd }, 'Opening a new tab…'); break;
+    case 'more': histLimit += 15; renderHistory(); break;
+    case 'check': S.update = { ...S.update, busy: true }; renderFooter(); act('/api/update/check', {}); break;
+    case 'install':
+      b.disabled = true;
+      if (await act('/api/update/install', {}, 'Installing, the page reconnects in a few seconds')) setTimeout(() => location.reload(), 6000);
+      break;
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  const inp = e.target.closest && e.target.closest('.rename');
+  if (!inp) return;
+  if (e.key === 'Enter') saveRename(inp);
+  if (e.key === 'Escape') { editing = null; renderLive(); }
+});
+document.addEventListener('focusout', (e) => {
+  if (e.target.classList && e.target.classList.contains('rename') && editing) saveRename(e.target);
+});
+document.addEventListener('click', (e) => {
+  const m = $('#newMenu');
+  if (m.open && !m.contains(e.target)) m.open = false;
+});
+
+$('#search').addEventListener('input', () => { histLimit = 15; if (S) renderHistory(); });
+$('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? 'Starts with Windows' : 'Will not start with Windows'));
+$('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

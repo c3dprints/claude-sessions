@@ -1,0 +1,13 @@
+{
+  "name": "claude-sessions",
+  "version": "1.0.0",
+  "description": "Local dashboard for every Claude Code terminal session, so none gets closed by accident.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run-all.js",
+    "release": "node scripts/release.js"
+  },
+  "engines": { "node": ">=18" }
+}
