@@ -1,6 +1,6 @@
 {
   "name": "claude-sessions",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local dashboard for every Claude Code terminal session, so none gets closed by accident.",
   "main": "server.js",
   "private": true,

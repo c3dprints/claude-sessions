@@ -281,6 +281,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Attached once: a callback passed to listen() would be added again on every retry.
+server.once('listening', () => {
+  log(`v${pkg.version} listening on http://${HOST}:${PORT}`);
+  poll();
+  setInterval(poll, POLL_MS);
+  if (!TEST_MODE) {
+    setTimeout(checkForUpdate, 30000);
+    setInterval(checkForUpdate, UPDATE_EVERY_MS);
+  }
+});
+
 // After an update the old server may still hold the port for a moment.
 function listen(tries = 0) {
   server.once('error', (e) => {
@@ -288,15 +299,7 @@ function listen(tries = 0) {
     log(`listen failed: ${e.message}`);
     process.exit(1);
   });
-  server.listen(PORT, HOST, () => {
-    log(`v${pkg.version} listening on http://${HOST}:${PORT}`);
-    poll();
-    setInterval(poll, POLL_MS);
-    if (!TEST_MODE) {
-      setTimeout(checkForUpdate, 30000);
-      setInterval(checkForUpdate, UPDATE_EVERY_MS);
-    }
-  });
+  server.listen(PORT, HOST);
 }
 
 listen();

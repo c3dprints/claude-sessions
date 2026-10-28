@@ -2,6 +2,11 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.0.1 (2026-10-28)
+
+- Fix: after an update the restarted server could run its poll loop and update timer several times over (one extra copy per port retry while the old server let go of the port).
+- Tests: a request can no longer hang the test run.
+
 ## 1.0.0 (2026-10-28)
 
 First release.

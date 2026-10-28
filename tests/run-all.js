@@ -64,6 +64,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
       res.on('end', () => { let j = null; try { j = JSON.parse(s); } catch { /* html */ } resolve({ status: res.statusCode, json: j, text: s }); });
     });
     req.on('error', reject);
+    req.setTimeout(5000, () => req.destroy(new Error(`${method} ${p} timed out`)));
     if (data) req.write(data);
     req.end();
   });
@@ -186,6 +187,10 @@ function request(port, method, p, { body, headers = {} } = {}) {
   // ---- HTTP contract -------------------------------------------------------
   const PORT = 8931;
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-data-'));
+  // Hold the port briefly, like an old server mid-restart, so the server has to retry.
+  const blocker = require('net').createServer((sock) => sock.destroy());
+  await new Promise((r) => blocker.listen(PORT, '127.0.0.1', r));
+  setTimeout(() => blocker.close(), 700);
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: { ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1' },
     stdio: 'ignore', windowsHide: true,
@@ -197,6 +202,12 @@ function request(port, method, p, { body, headers = {} } = {}) {
       up = await request(PORT, 'GET', '/api/ping').then((r) => r.status === 200, () => false);
     }
     const H = { 'X-Claude-Sessions': '1' };
+
+    await check('http: port retry after a restart starts the server only once', () => {
+      assert.ok(up, 'server never came up after the port was freed');
+      const lines = fs.readFileSync(path.join(data, 'server.log'), 'utf8').split('\n').filter((l) => l.includes('listening'));
+      assert.strictEqual(lines.length, 1);
+    });
 
     await check('http: state lists live sessions', async () => {
       const r = await request(PORT, 'GET', '/api/state');
