@@ -85,7 +85,7 @@ function snapshot() {
     closed: closed.map(withNick),
     history: history.map(withNick),
     folders: folders.slice(0, 12),
-    update: { ...store.state.update, busy: updateBusy },
+    update: { ...updateStatus(), busy: updateBusy },
     settings: { autoUpdate: !!store.state.settings.autoUpdate, startWithWindows: startup.isEnabled() },
   };
 }
@@ -93,6 +93,15 @@ function snapshot() {
 // ---- updates -----------------------------------------------------------------
 
 let updateBusy = false;
+
+// The saved result predates any restart, so "available" is re-judged against the running version.
+function updateStatus() {
+  const u = { ...store.state.update, current: pkg.version };
+  let newer = false;
+  try { newer = !!u.latest && updater.compare(u.latest, pkg.version) > 0; } catch { /* bad saved tag */ }
+  u.available = !!u.available && newer;
+  return u;
+}
 
 async function checkForUpdate() {
   if (updateBusy) return store.state.update;
@@ -246,8 +255,8 @@ const routes = {
   'POST /api/update/check': () => checkForUpdate(),
 
   'POST /api/update/install': async () => {
-    const u = store.state.update;
-    if (!u || !u.available) throw fail(400, 'no update available');
+    const u = updateStatus();
+    if (!u.available) throw fail(400, 'no update available');
     if (TEST_MODE) return { ok: true, test: true };
     await installUpdate(u.latest);
     return { ok: true, restarting: true };

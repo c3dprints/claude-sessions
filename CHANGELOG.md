@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.0.2 (2026-10-28)
+
+- Fix: right after installing an update the footer still offered that same update. The saved check result is now compared with the running version.
+
 ## 1.0.1 (2026-10-28)
 
 - Fix: after an update the restarted server could run its poll loop and update timer several times over (one extra copy per port retry while the old server let go of the port).

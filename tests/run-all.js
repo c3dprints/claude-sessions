@@ -187,6 +187,8 @@ function request(port, method, p, { body, headers = {} } = {}) {
   // ---- HTTP contract -------------------------------------------------------
   const PORT = 8931;
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-data-'));
+  // What a server leaves behind right before it installs v0.0.1 and restarts.
+  fs.writeFileSync(path.join(data, 'state.json'), JSON.stringify({ update: { current: '0.0.0', latest: 'v0.0.1', available: true, mode: 'release' } }));
   // Hold the port briefly, like an old server mid-restart, so the server has to retry.
   const blocker = require('net').createServer((sock) => sock.destroy());
   await new Promise((r) => blocker.listen(PORT, '127.0.0.1', r));
@@ -214,6 +216,14 @@ function request(port, method, p, { body, headers = {} } = {}) {
       assert.strictEqual(r.status, 200);
       assert.deepStrictEqual(r.json.live.map((s) => s.sessionId).sort(), [ID1, ID2]);
       assert.strictEqual(r.json.folders[0], fx.work);
+    });
+
+    await check('http: a saved update older than the running version is not offered', async () => {
+      const r = await request(PORT, 'GET', '/api/state');
+      assert.strictEqual(r.json.update.available, false);
+      assert.strictEqual(r.json.update.current, require('../package.json').version);
+      const inst = await request(PORT, 'POST', '/api/update/install', { body: {}, headers: H });
+      assert.strictEqual(inst.status, 400);
     });
 
     await check('http: page is served', async () => {
