@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 
 const pkg = require('./package.json');
@@ -14,7 +15,9 @@ const sessions = require('./lib/sessions');
 const terminal = require('./lib/terminal');
 const updater = require('./lib/updater');
 const startup = require('./lib/startup');
-const { Store } = require('./lib/store');
+const library = require('./lib/library');
+const usage = require('./lib/usage');
+const { Store, projectOf } = require('./lib/store');
 const { HostClient } = require('./lib/hostclient');
 
 const PORT = Number(process.env.CS_PORT || 8930);
@@ -88,23 +91,103 @@ function snapshot() {
   const closed = store.state.closed.filter((c) => !liveIds.has(c.sessionId));
   const closedIds = new Set(closed.map((c) => c.sessionId));
   const history = getHistory(new Set([...liveIds, ...closedIds]));
-  const folders = [];
-  for (const s of [...live, ...closed, ...history]) {
-    if (s.cwd && !folders.includes(s.cwd) && !/\\AppData\\Local\\Temp\\claude\\/i.test(s.cwd)) folders.push(s.cwd);
-  }
-  const withNick = (s) => ({ ...s, nickname: nick[s.sessionId] || null });
+  const withNick = (s) => ({ ...s, nickname: nick[s.sessionId] || null, project: projectOf(store.state, s) });
   return {
     app: { name: 'Claude Sessions', version: pkg.version },
     now: Date.now(),
-    live: live.map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null })),
+    live: live.map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) })),
     closed: closed.map(withNick),
     history: history.map(withNick),
-    folders: folders.slice(0, 12),
+    folders: recentFolders([...live, ...closed, ...history]).slice(0, 12),
+    projects: store.state.projects,
     terminals: { up: host.up, outdated: host.outdated, error: host.error, list: terms },
+    usage: usage.planUsage(CLAUDE_DIR, DATA_DIR),
     update: { ...updateStatus(), busy: updateBusy },
-    settings: { autoUpdate: !!store.state.settings.autoUpdate, startWithWindows: startup.isEnabled() },
+    settings: {
+      autoUpdate: !!store.state.settings.autoUpdate,
+      startWithWindows: startup.isEnabled(),
+      wikiDirs: store.state.settings.wikiDirs,
+    },
   };
 }
+
+function recentFolders(list) {
+  const folders = [];
+  for (const s of list) {
+    if (s.cwd && !folders.includes(s.cwd) && !/\\AppData\\Local\\Temp\\claude\\/i.test(s.cwd)) folders.push(s.cwd);
+  }
+  return folders;
+}
+
+// ---- wiki, skills, context -------------------------------------------------------
+
+function cached(ms, fn) {
+  let at = 0;
+  let value = null;
+  let pending = null;
+  const get = async () => {
+    if (value && Date.now() - at < ms) return value;
+    if (!pending) {
+      pending = Promise.resolve().then(fn)
+        .then((v) => { value = v; at = Date.now(); return v; })
+        .finally(() => { pending = null; });
+    }
+    return pending;
+  };
+  get.clear = () => { at = 0; };
+  return get;
+}
+
+// Folders whose .claude holds project skills: project folders and recent session folders.
+function knownProjectFolders() {
+  const out = new Set();
+  for (const p of store.state.projects) for (const f of p.folders) out.add(f);
+  for (const f of recentFolders([...live, ...store.state.closed])) out.add(f);
+  return [...out];
+}
+
+const wikiCache = cached(20000, () => library.wiki({
+  claudeDir: CLAUDE_DIR,
+  wikiDirs: store.state.settings.wikiDirs,
+  folders: [os.homedir(), ...knownProjectFolders()],
+}));
+const skillsCache = cached(30000, () => library.skills({ claudeDir: CLAUDE_DIR, folders: knownProjectFolders() }));
+
+function contextBrief(s) {
+  try {
+    const c = usage.contextFor({ claudeDir: CLAUDE_DIR, dataDir: DATA_DIR, sessionId: s.sessionId, transcript: sessions.findTranscript(CLAUDE_DIR, s.sessionId), cwd: null });
+    return c.available ? { pct: c.pct, used: c.used, size: c.size } : null;
+  } catch { return null; }
+}
+
+function contextOf(s) {
+  return {
+    ...usage.contextFor({
+      claudeDir: CLAUDE_DIR, dataDir: DATA_DIR, sessionId: s.sessionId,
+      transcript: sessions.findTranscript(CLAUDE_DIR, s.sessionId), cwd: s.cwd,
+    }),
+    title: store.state.nicknames[s.sessionId] || s.title || s.firstPrompt || s.name || null,
+    cwd: s.cwd,
+    status: s.status || null,
+    live: live.includes(s),
+  };
+}
+
+function checkProject(b) {
+  const name = String(b.name || '').trim().slice(0, 60);
+  if (!name) throw fail(400, 'give the project a name');
+  if (!PROJECT_COLORS.includes(b.color)) throw fail(400, 'pick one of the colors');
+  if (!Array.isArray(b.folders) || b.folders.length > 10) throw fail(400, 'folders must be a list of up to 10');
+  const folders = [];
+  for (const f of b.folders) {
+    let dir;
+    try { dir = terminal.checkDir(String(f).trim()); } catch (e) { throw fail(400, e.message); }
+    if (!folders.some((x) => x.toLowerCase() === dir.toLowerCase())) folders.push(dir);
+  }
+  return { name, color: b.color, folders };
+}
+
+const PROJECT_COLORS = ['#d97757', '#5b9cf6', '#4fbf8a', '#e8b04b', '#b07ce8', '#e86fa5', '#4cc3c9', '#8d95a5'];
 
 // ---- terminals ---------------------------------------------------------------
 
@@ -316,7 +399,7 @@ function fail(code, message) {
 }
 
 function knownFolder(cwd) {
-  return snapshot().folders.includes(cwd);
+  return snapshot().folders.includes(cwd) || store.state.projects.some((p) => p.folders.includes(cwd));
 }
 
 const routes = {
@@ -418,7 +501,81 @@ const routes = {
     return { ok: true };
   },
 
+  // ---- projects
+  'POST /api/projects/save': async (b) => {
+    const p = checkProject(b);
+    if (b.id) {
+      const old = store.state.projects.find((x) => x.id === b.id);
+      if (!old) throw fail(404, 'no such project');
+      Object.assign(old, p);
+    } else {
+      if (store.state.projects.length >= 50) throw fail(400, 'that is a lot of projects; delete one first');
+      store.state.projects.push({ id: crypto.randomUUID(), ...p });
+    }
+    store.save();
+    skillsCache.clear();
+    return { ok: true, id: b.id || store.state.projects[store.state.projects.length - 1].id };
+  },
+
+  'POST /api/projects/delete': async (b) => {
+    if (!store.state.projects.some((p) => p.id === b.id)) throw fail(404, 'no such project');
+    store.state.projects = store.state.projects.filter((p) => p.id !== b.id);
+    for (const [sid, pid] of Object.entries(store.state.assign)) if (pid === b.id) delete store.state.assign[sid];
+    store.save();
+    return { ok: true };
+  },
+
+  // projectId: a project, 'none' (keep it out of every project), or null (go by folder again)
+  'POST /api/projects/assign': async (b) => {
+    if (!sessions.UUID_RE.test(String(b.sessionId))) throw fail(400, 'bad session id');
+    if (b.projectId === null || b.projectId === undefined) delete store.state.assign[b.sessionId];
+    else if (b.projectId === 'none' || store.state.projects.some((p) => p.id === b.projectId)) store.state.assign[b.sessionId] = b.projectId;
+    else throw fail(404, 'no such project');
+    store.save();
+    return { ok: true };
+  },
+
+  // ---- wiki, skills, context, plan usage
+  'GET /api/wiki': async (b, url) => {
+    if (url.searchParams.get('fresh')) wikiCache.clear();
+    return { groups: await wikiCache() };
+  },
+
+  'GET /api/skills': async () => ({ skills: (await skillsCache()).map(({ file, ...s }) => ({ ...s, where: library.home(file) })) }),
+
+  'GET /api/skills/file': async (b, url) => {
+    const s = (await skillsCache()).find((x) => x.id === url.searchParams.get('id'));
+    if (!s) throw fail(404, 'no such skill');
+    let text;
+    try { text = fs.readFileSync(s.file, 'utf8'); } catch { throw fail(404, 'the file is gone'); }
+    return { id: s.id, text: library.frontmatter(text).body, where: library.home(s.file) };
+  },
+
+  'GET /api/context': async (b, url) => {
+    const id = url.searchParams.get('id');
+    if (id) {
+      if (!sessions.UUID_RE.test(id)) throw fail(400, 'bad session id');
+      const s = live.find((x) => x.sessionId === id) || sessions.lookup(CLAUDE_DIR, id);
+      if (!s) throw fail(404, 'no such session');
+      return { sessions: [contextOf(s)] };
+    }
+    return { sessions: live.map(contextOf) };
+  },
+
+  'POST /api/usage/statusline': async (b) => {
+    if (b.on) usage.enableStatusLine(CLAUDE_DIR, DATA_DIR, APP_DIR);
+    else usage.disableStatusLine(CLAUDE_DIR);
+    log(`status line ${b.on ? 'turned on' : 'turned off'}`);
+    return usage.planUsage(CLAUDE_DIR, DATA_DIR);
+  },
+
   'POST /api/settings': async (b) => {
+    if (Array.isArray(b.wikiDirs)) {
+      const dirs = b.wikiDirs.map((d) => String(d).trim()).filter(Boolean).slice(0, 5);
+      if (dirs.some((d) => !path.isAbsolute(d))) throw fail(400, 'wiki folders must be full paths');
+      store.state.settings.wikiDirs = dirs;
+      wikiCache.clear();
+    }
     if (typeof b.autoUpdate === 'boolean') store.state.settings.autoUpdate = b.autoUpdate;
     if (typeof b.startWithWindows === 'boolean' && !TEST_MODE) await startup.setEnabled(b.startWithWindows);
     store.save();
@@ -459,7 +616,7 @@ const server = http.createServer(async (req, res) => {
   if (!route) return send(res, 404, { error: 'not found' });
   try {
     const body = req.method === 'POST' ? await readBody(req) : {};
-    send(res, 200, await route(body));
+    send(res, 200, await route(body, url));
   } catch (e) {
     const code = Number.isInteger(e.code) ? e.code : 500;
     if (code === 500) log(`${url.pathname}: ${e.stack || e}`);
@@ -473,6 +630,10 @@ server.once('listening', () => {
   poll();
   setInterval(poll, POLL_MS);
   host.attach();
+  // An update may have changed the status line script; refresh the copy Claude Code runs.
+  try { if (usage.statusLineState(CLAUDE_DIR).enabled) usage.installScript(DATA_DIR, APP_DIR); } catch (e) { log(`status line copy failed: ${e.message}`); }
+  usage.pruneStatus(DATA_DIR);
+  setInterval(() => usage.pruneStatus(DATA_DIR), 86400000);
   if (!TEST_MODE) {
     setTimeout(checkForUpdate, 30000);
     setInterval(checkForUpdate, UPDATE_EVERY_MS);

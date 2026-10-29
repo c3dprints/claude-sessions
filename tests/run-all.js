@@ -14,7 +14,9 @@ const ROOT = path.join(__dirname, '..');
 const sessions = require('../lib/sessions');
 const terminal = require('../lib/terminal');
 const updater = require('../lib/updater');
-const { trackClosures, Store } = require('../lib/store');
+const { trackClosures, Store, projectOf } = require('../lib/store');
+const library = require('../lib/library');
+const usage = require('../lib/usage');
 const { HostClient } = require('../lib/hostclient');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -58,14 +60,24 @@ function fakeClaude() {
   fs.mkdirSync(proj, { recursive: true });
   const line = (o) => JSON.stringify(o) + '\n';
   const user = (content, extra = {}) => line({ type: 'user', cwd: work, origin: { kind: 'human' }, message: { role: 'user', content }, ...extra });
+  const assistant = (input, model) => line({ type: 'assistant', timestamp: '2026-10-28T12:00:00.000Z', message: { model, usage: { input_tokens: 10, cache_creation_input_tokens: input ? input - 10 : 0, cache_read_input_tokens: 0, output_tokens: 50 } } });
   fs.writeFileSync(path.join(proj, ID1 + '.jsonl'),
     line({ type: 'mode', mode: 'normal' }) +
     user('fix the <b>printer</b> page') +
     user([{ type: 'tool_result', content: 'ignored' }]) +
     user('<command-name>/clear</command-name>') +
     user('subagent text', { isSidechain: true }) +
+    assistant(1000, 'claude-test-1') +
+    assistant(0) + // synthetic message: no usage, must be skipped
     line({ type: 'ai-title', aiTitle: 'Printer page fix' }) +
-    user([{ type: 'text', text: 'now   add\n tests' }]));
+    user([{ type: 'text', text: 'now   add\n tests' }]) +
+    assistant(5000, 'claude-test-1'));
+  // What Claude Code loads for that folder: a CLAUDE.md and the auto memory index.
+  fs.writeFileSync(path.join(work, 'CLAUDE.md'), 'x'.repeat(400));
+  const mem = path.join(dir, 'projects', library.slugOf(work), 'memory');
+  fs.mkdirSync(mem, { recursive: true });
+  fs.writeFileSync(path.join(mem, 'MEMORY.md'), '- [Ports](ports.md) - which app uses which port\n');
+  fs.writeFileSync(path.join(mem, 'ports.md'), '---\nname: ports\ndescription: "Every app and its port"\nmetadata:\n  type: reference\n---\n\nSee [[MEMORY]].\n');
   fs.writeFileSync(path.join(proj, ID2 + '.jsonl'),
     user('second session') + line({ type: 'ai-title', aiTitle: 'Old title' }) + line({ type: 'custom-title', customTitle: 'My name' }));
   fs.writeFileSync(path.join(proj, ID3 + '.jsonl'), line({ type: 'mode' })); // no human prompt
@@ -205,6 +217,137 @@ function request(port, method, p, { body, headers = {} } = {}) {
     const top = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8').match(/^## (\d+\.\d+\.\d+)/m);
     assert.ok(top, 'CHANGELOG has no "## x.y.z" heading');
     assert.strictEqual(top[1], v);
+  });
+
+  // ---- projects, wiki, skills, context, plan usage -----------------------------
+  await check('projects: deepest folder wins, a hand-picked project or "none" beats folders', () => {
+    const st = {
+      projects: [{ id: 'a', folders: ['C:\\code'] }, { id: 'b', folders: ['C:\\code\\makerq\\'] }],
+      assign: { [ID2]: 'a', [ID3]: 'none' },
+    };
+    assert.strictEqual(projectOf(st, { sessionId: ID1, cwd: 'C:\\Code\\MakerQ\\web' }), 'b');
+    assert.strictEqual(projectOf(st, { sessionId: ID1, cwd: 'C:\\code' }), 'a');
+    assert.strictEqual(projectOf(st, { sessionId: ID1, cwd: 'C:\\codex' }), null, 'a folder name prefix is not inside it');
+    assert.strictEqual(projectOf(st, { sessionId: ID2, cwd: 'C:\\code\\makerq' }), 'a');
+    assert.strictEqual(projectOf(st, { sessionId: ID3, cwd: 'C:\\code' }), null);
+    assert.strictEqual(projectOf({ ...st, assign: { [ID1]: 'deleted' } }, { sessionId: ID1, cwd: 'C:\\code' }), 'a');
+  });
+
+  await check('frontmatter: quoted values, folded blocks, nested type', () => {
+    const { data, body } = library.frontmatter('---\nname: x\ndescription: "say \\"hi\\""\nlong: >\n  one\n  two\nmetadata:\n  type: project\n---\n# Body\n');
+    assert.strictEqual(data.name, 'x');
+    assert.strictEqual(data.description, 'say "hi"');
+    assert.strictEqual(data.long, 'one two');
+    assert.strictEqual(data.type, 'project');
+    assert.strictEqual(body, '# Body\n');
+    assert.deepStrictEqual(library.frontmatter('# none').data, {});
+  });
+
+  await check('context: first and last reply give startup cost and total; memory files counted', () => {
+    const c = usage.contextFor({ claudeDir: fx.dir, dataDir: fx.dir, sessionId: ID1, transcript: sessions.findTranscript(fx.dir, ID1), cwd: fx.work });
+    assert.ok(c.available);
+    assert.strictEqual(c.used, 5000);
+    assert.strictEqual(c.size, 200000);
+    assert.strictEqual(c.model, 'claude-test-1');
+    const part = (k) => c.parts.find((p) => p.key === k).tokens;
+    assert.strictEqual(part('messages'), 4000);
+    assert.ok(part('memory') >= 100, 'CLAUDE.md (400 chars) and MEMORY.md are counted');
+    assert.strictEqual(part('system') + part('memory'), 1000);
+    assert.strictEqual(usage.contextFor({ claudeDir: fx.dir, dataDir: fx.dir, sessionId: ID3, transcript: sessions.findTranscript(fx.dir, ID3), cwd: fx.work }).available, false);
+  });
+
+  await check('context: finds the first reply past a large start of the transcript', () => {
+    const f = path.join(fx.dir, 'big.jsonl');
+    const pad = JSON.stringify({ type: 'file-history-snapshot', blob: 'y'.repeat(600 * 1024) }) + '\n';
+    const a = (n) => JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: n } } }) + '\n';
+    fs.writeFileSync(f, pad + a(777) + pad + pad + a(9000));
+    const u = usage.transcriptUsage(f);
+    assert.strictEqual(u.first.input, 777);
+    assert.strictEqual(u.last.input, 9000);
+  });
+
+  await check('wiki: pages of each wiki folder and every auto memory folder', async () => {
+    const wdir = path.join(fx.dir, 'wiki');
+    fs.mkdirSync(wdir);
+    fs.writeFileSync(path.join(wdir, 'Apps and Ports.md'), '# Our apps\n\n| App | Port |\n|---|---|\n| X | 1 |\n');
+    fs.writeFileSync(path.join(wdir, 'notes.txt'), 'not markdown');
+    const groups = await library.wiki({ claudeDir: fx.dir, wikiDirs: [wdir, path.join(fx.dir, 'missing')], folders: [fx.work] });
+    const [w, missing, mem] = groups;
+    assert.deepStrictEqual(w.pages.map((p) => p.title), ['Our apps']);
+    assert.strictEqual(missing.error, 'folder not reachable');
+    assert.strictEqual(mem.label, 'Claude memory');
+    assert.ok(mem.where.endsWith('work'), 'memory folder is named by its project folder');
+    assert.strictEqual(mem.pages[0].name, 'MEMORY', 'the index comes first');
+    const ports = mem.pages.find((p) => p.name === 'ports');
+    assert.strictEqual(ports.description, 'Every app and its port');
+    assert.strictEqual(ports.type, 'reference');
+  });
+
+  await check('skills: personal, claude.ai, plugin (on and off) and project skills and commands', () => {
+    const sk = (dir, name, desc) => { fs.mkdirSync(path.join(dir, name), { recursive: true }); fs.writeFileSync(path.join(dir, name, 'SKILL.md'), `---\nname: ${name}\ndescription: ${desc}\n---\nBody of ${name}\n`); };
+    sk(path.join(fx.dir, 'skills'), 'mine', 'My own skill');
+    sk(path.join(fx.dir, 'skills', 'synced', 'bucket1'), 'pdf', 'Read PDFs');
+    const plug = path.join(fx.dir, 'plugins', 'cache', 'p1');
+    sk(path.join(plug, 'skills'), 'review', 'Review code');
+    fs.mkdirSync(path.join(plug, 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(plug, 'commands', 'ship.md'), '---\ndescription: Ship it\n---\nSteps\n');
+    fs.writeFileSync(path.join(fx.dir, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'p1@market': [{ installPath: plug, version: '1.2.3' }] } }));
+    sk(path.join(fx.work, '.claude', 'skills'), 'local', 'Project skill');
+    const list = library.skills({ claudeDir: fx.dir, folders: [fx.work] });
+    const by = Object.fromEntries(list.map((s) => [s.qualified, s]));
+    assert.deepStrictEqual(Object.keys(by).sort(), ['anthropic-skills:pdf', 'local', 'mine', 'p1:review', 'p1:ship']);
+    assert.strictEqual(by['p1:review'].enabled, false, 'plugin is not in enabledPlugins');
+    assert.strictEqual(by['p1:ship'].kind, 'command');
+    assert.strictEqual(by['p1:ship'].description, 'Ship it');
+    assert.ok(by.local.source.startsWith('Project'));
+    assert.ok(by.mine.listTokens > 0 && by.mine.fullTokens > by.mine.listTokens);
+  });
+
+  await check('status line: turns on and off without touching other settings, never replaces a foreign one', () => {
+    const cd = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-sl-'));
+    const dd = path.join(cd, 'data');
+    const file = path.join(cd, 'settings.json');
+    fs.writeFileSync(file, '\uFEFF' + JSON.stringify({ theme: 'dark', enabledPlugins: { a: true } }));
+    usage.enableStatusLine(cd, dd, ROOT);
+    let s = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(s.theme, 'dark');
+    assert.deepStrictEqual(s.enabledPlugins, { a: true });
+    assert.strictEqual(s.statusLine.command, usage.commandFor(dd));
+    assert.ok(fs.existsSync(path.join(dd, 'statusline.js')), 'the script is copied next to the app data');
+    assert.strictEqual(usage.planUsage(cd, dd).statusLine, true);
+    usage.disableStatusLine(cd);
+    s = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(s.statusLine, undefined);
+    assert.strictEqual(s.theme, 'dark');
+    fs.writeFileSync(file, JSON.stringify({ statusLine: { type: 'command', command: 'my-own.sh' } }));
+    assert.throws(() => usage.enableStatusLine(cd, dd, ROOT), /already has its own status line/);
+    usage.disableStatusLine(cd);
+    assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).statusLine.command, 'my-own.sh', 'a foreign status line is left alone');
+    assert.strictEqual(usage.planUsage(cd, dd).otherStatusLine, 'my-own.sh');
+  });
+
+  await check('status line script: saves usage and context, prints a short line', () => {
+    const dd = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-sls-'));
+    usage.installScript(dd, ROOT);
+    const reset = Math.floor(Date.now() / 1000) + 3600;
+    const input = {
+      session_id: ID1, model: { id: 'm', display_name: 'Opus' }, workspace: { current_dir: 'C:\\w' },
+      context_window: { used_percentage: 12.4, context_window_size: 1000000, current_usage: { input_tokens: 5, cache_read_input_tokens: 120000 } },
+      rate_limits: { five_hour: { used_percentage: 34.6, resets_at: reset }, seven_day: { used_percentage: 10, resets_at: reset + 86400 } },
+    };
+    const r = require('child_process').spawnSync(process.execPath, [path.join(dd, 'statusline.js')], { input: JSON.stringify(input), encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(/Opus · context 12% · 5h 35%/.test(r.stdout), r.stdout);
+    const pu = usage.planUsage(fx.dir, dd);
+    assert.strictEqual(pu.fiveHour.pct, 34.6);
+    assert.strictEqual(pu.fiveHour.resetsAt, reset * 1000);
+    assert.strictEqual(usage.planUsage(fx.dir, dd, (reset + 1) * 1000).fiveHour, null, 'a window past its reset time reads as empty');
+    const c = usage.contextFor({ claudeDir: fx.dir, dataDir: dd, sessionId: ID1, transcript: null, cwd: null });
+    assert.strictEqual(c.size, 1000000);
+    assert.strictEqual(c.used, 120005);
+    assert.ok(c.sizeKnown);
+    const bad = require('child_process').spawnSync(process.execPath, [path.join(dd, 'statusline.js')], { input: 'not json', encoding: 'utf8' });
+    assert.strictEqual(bad.status, 0, 'bad input never breaks Claude Code');
   });
 
   // ---- session host + ConPTY bridge ----------------------------------------
@@ -364,6 +507,63 @@ function request(port, method, p, { body, headers = {} } = {}) {
     await check('http: oversized body is rejected', async () => {
       const r = await request(PORT, 'POST', '/api/rename', { body: { sessionId: ID1, name: 'x'.repeat(300000) }, headers: H });
       assert.strictEqual(r.status, 413);
+    });
+
+    await check('http: projects: make, assign by folder and by hand, start a session in its folder, delete', async () => {
+      const proj = path.join(fx.dir, 'proj-folder');
+      fs.mkdirSync(proj);
+      const bad = await request(PORT, 'POST', '/api/projects/save', { body: { name: 'X', color: '#d97757', folders: [path.join(fx.dir, 'nope')] }, headers: H });
+      assert.strictEqual(bad.status, 400);
+      const badColor = await request(PORT, 'POST', '/api/projects/save', { body: { name: 'X', color: 'red;}', folders: [] }, headers: H });
+      assert.strictEqual(badColor.status, 400);
+      const made = await request(PORT, 'POST', '/api/projects/save', { body: { name: ' Printer ', color: '#5b9cf6', folders: [fx.work, fx.work.toUpperCase(), proj] }, headers: H });
+      assert.strictEqual(made.status, 200, JSON.stringify(made.json));
+      const pid = made.json.id;
+      let s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(s.projects[0].name, 'Printer');
+      assert.strictEqual(s.projects[0].folders.length, 2, 'the same folder twice is kept once');
+      assert.ok(s.live.every((x) => x.project === pid), 'sessions in its folder join by themselves');
+      await request(PORT, 'POST', '/api/projects/assign', { body: { sessionId: ID1, projectId: 'none' }, headers: H });
+      s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(s.live.find((x) => x.sessionId === ID1).project, null);
+      assert.strictEqual((await request(PORT, 'POST', '/api/projects/assign', { body: { sessionId: ID1, projectId: 'no-such' }, headers: H })).status, 404);
+      await request(PORT, 'POST', '/api/projects/assign', { body: { sessionId: ID1, projectId: null }, headers: H });
+      s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(s.live.find((x) => x.sessionId === ID1).project, pid, 'back to going by folder');
+      const started = await request(PORT, 'POST', '/api/new', { body: { cwd: proj, where: 'terminal' }, headers: H });
+      assert.strictEqual(started.status, 200, 'a project folder counts as a known folder');
+      await request(PORT, 'POST', '/api/projects/delete', { body: { id: pid }, headers: H });
+      s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(s.projects.length, 0);
+      assert.ok(s.live.every((x) => x.project === null));
+    });
+
+    await check('http: wiki, skills and a skill file', async () => {
+      const w = await request(PORT, 'POST', '/api/settings', { body: { wikiDirs: [path.join(fx.dir, 'wiki')] }, headers: H });
+      assert.strictEqual(w.status, 200);
+      assert.strictEqual((await request(PORT, 'POST', '/api/settings', { body: { wikiDirs: ['relative'] }, headers: H })).status, 400);
+      const wiki = (await request(PORT, 'GET', '/api/wiki')).json;
+      assert.ok(wiki.groups.some((g) => g.label === 'Wiki' && g.pages.some((p) => p.title === 'Our apps')));
+      const sk = (await request(PORT, 'GET', '/api/skills')).json.skills;
+      const mine = sk.find((s) => s.qualified === 'mine');
+      assert.ok(mine && !('file' in mine), 'the list gives no raw file paths to open');
+      const f = await request(PORT, 'GET', '/api/skills/file?id=' + mine.id);
+      assert.strictEqual(f.json.text, 'Body of mine\n');
+      assert.strictEqual((await request(PORT, 'GET', '/api/skills/file?id=..%5C..%5Cwin.ini')).status, 404);
+    });
+
+    await check('http: context of open sessions, plan usage switch', async () => {
+      const ctx = (await request(PORT, 'GET', '/api/context')).json.sessions;
+      const one = ctx.find((c) => c.sessionId === ID1);
+      assert.ok(one.available && one.used === 5000 && one.live);
+      const s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(Math.round(s.live.find((x) => x.sessionId === ID1).context.pct * 100), 250);
+      assert.strictEqual(s.usage.statusLine, false);
+      const on = await request(PORT, 'POST', '/api/usage/statusline', { body: { on: true }, headers: H });
+      assert.strictEqual(on.json.statusLine, true);
+      assert.ok(JSON.parse(fs.readFileSync(path.join(fx.dir, 'settings.json'), 'utf8')).statusLine.command.includes(usage.MARK));
+      await request(PORT, 'POST', '/api/usage/statusline', { body: { on: false }, headers: H });
+      assert.strictEqual(JSON.parse(fs.readFileSync(path.join(fx.dir, 'settings.json'), 'utf8')).statusLine, undefined);
     });
 
     await check('http: a cross-site request is refused even with the header', async () => {

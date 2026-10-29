@@ -12,6 +12,7 @@
     --text: #e8eaef; --muted: #8d95a5; --faint: #5c6473;
     --accent: #d97757; --accent-text: #fff;
     --working: #5b9cf6; --waiting: #e8b04b; --closed: #ef6b6b; --ok: #4fbf8a;
+    --c-system: #8d95a5; --c-memory: #b07ce8; --c-messages: #5b9cf6; --c-free: #272c37;
     --term-bg: #0b0d11;
     --shadow: 0 1px 2px rgba(0,0,0,.3);
     color-scheme: dark;
@@ -21,6 +22,7 @@
       --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e1e4ea;
       --text: #1b1f27; --muted: #5d6573; --faint: #9aa1ad;
       --working: #2f74e0; --waiting: #b97a06; --closed: #d23f3f; --ok: #1f9461;
+      --c-system: #7b8494; --c-memory: #8a52d1; --c-messages: #2f74e0; --c-free: #e4e7ec;
       --shadow: 0 1px 2px rgba(20,24,33,.06);
       color-scheme: light;
     }
@@ -29,14 +31,28 @@
   html, body { height: 100%; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
   button { font: inherit; cursor: pointer; }
+  input, select, textarea { font: inherit; color: var(--text); }
 
-  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
   header img { width: 26px; height: 26px; }
   header h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
   .chip b { color: var(--text); font-weight: 600; }
   .spacer { flex: 1; }
+
+  /* plan usage meter in the header */
+  .meters { display: flex; gap: 8px; align-items: center; }
+  .meter { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .meter:hover { border-color: var(--faint); }
+  .meter b { color: var(--text); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .meter .bar { width: 90px; }
+  .meter.setup { color: var(--text); }
+  .bar { display: inline-block; height: 7px; border-radius: 4px; background: var(--c-free); overflow: hidden; vertical-align: middle; }
+  .bar > i { display: block; height: 100%; background: var(--lvl, var(--ok)); border-radius: 4px; }
+  .lvl-ok { --lvl: var(--ok); }
+  .lvl-warn { --lvl: var(--waiting); }
+  .lvl-high { --lvl: var(--closed); }
 
   .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; white-space: nowrap; }
   .btn:hover { background: var(--surface-2); }
@@ -51,37 +67,56 @@
   .menu { position: relative; }
   .menu > summary { list-style: none; }
   .menu > summary::-webkit-details-marker { display: none; }
-  .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 300px; max-width: 460px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
-  .menu-pop button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 300px; max-width: 460px; max-height: 70vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .menu-pop button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-pop button.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; display: block; }
   .menu-pop button:hover { background: var(--surface-2); }
-  .menu-pop .hint { color: var(--muted); font-size: 12px; padding: 4px 10px 6px; }
+  .menu-pop button.on { font-weight: 600; }
+  .menu-pop .hint { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; padding: 6px 10px 4px; }
+  .menu-pop hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+  #pmenu { position: fixed; right: auto; top: auto; min-width: 220px; z-index: 40; }
+  #pmenu[hidden] { display: none; }
 
   .layout { flex: 1; display: grid; grid-template-columns: 264px 1fr; min-height: 0; }
   nav.side { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px 16px; }
-  .side-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 14px 10px 6px; }
+  .side-h { display: flex; align-items: center; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 14px 10px 6px; }
+  .side-h .btn { margin-left: auto; text-transform: none; letter-spacing: 0; padding: 0 7px; font-size: 15px; line-height: 20px; }
   .side-empty { color: var(--faint); font-size: 12.5px; padding: 2px 10px; }
   .nav-item { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 8px; }
   .nav-item:hover { background: var(--surface-2); }
   .nav-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
   .nav-item .dot { margin-top: 6px; flex: none; }
   .nav-item .nt { display: block; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nav-item .ns { display: block; font-size: 12px; color: var(--muted); }
+  .nav-item .ns { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nav-item > span:last-child { min-width: 0; flex: 1; }
+  .nav-item.view { align-items: center; padding: 6px 10px; }
+  .nav-item.view .ico { width: 18px; text-align: center; color: var(--muted); flex: none; }
+  .nav-item.view .nt { font-weight: 500; flex: 1; }
+  .nav-item.view .num { flex: none; color: var(--faint); font-size: 12px; }
   .nav-row { display: flex; align-items: center; }
   .nav-row .nav-item { flex: 1; min-width: 0; }
+  .pbar { width: 3px; align-self: stretch; border-radius: 2px; flex: none; margin: 2px -4px 2px -6px; }
+  .pdot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
 
   main { min-width: 0; min-height: 0; position: relative; }
-  #overview { position: absolute; inset: 0; overflow-y: auto; }
-  #overview[hidden] { display: none; }
+  .view-pane { position: absolute; inset: 0; overflow-y: auto; }
+  .view-pane[hidden] { display: none; }
   .wrap { max-width: 1200px; margin: 0 auto; padding: 18px 24px 40px; }
 
   .banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; margin-bottom: 8px; border: 1px solid color-mix(in srgb, var(--closed) 45%, transparent); background: color-mix(in srgb, var(--closed) 12%, var(--surface)); }
   .banner .msg { flex: 1; }
   .banner .msg b { font-weight: 600; }
+  .banner.info { border-color: var(--border); background: var(--surface); }
 
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 22px 0 10px; display: flex; align-items: center; gap: 10px; }
   h2 .count { color: var(--faint); }
-  h2 input { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  h2 input, h2 .right { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+  .phead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; border-left: 5px solid var(--pc); }
+  .phead h3 { margin: 0; font-size: 18px; }
+  .phead .folders { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .phead .folders .btn { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .phead .none { color: var(--muted); font-size: 12.5px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
   .card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px 12px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
@@ -101,12 +136,18 @@
   .where { margin-left: auto; font-size: 11.5px; color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; }
   .title { font-size: 15.5px; font-weight: 600; margin: 2px 0 0; overflow-wrap: anywhere; }
   .title .orig { display: block; font-size: 12px; font-weight: 400; color: var(--faint); }
-  .meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
   .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   .prompt { color: var(--muted); font-size: 13px; border-left: 2px solid var(--border); padding-left: 9px; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .actions { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
   .actions .ver { margin-left: auto; color: var(--faint); font-size: 11.5px; }
-  .rename { width: 100%; font: inherit; font-size: 15px; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--accent); background: var(--surface-2); color: var(--text); }
+  .rename { width: 100%; font-size: 15px; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--accent); background: var(--surface-2); }
+  .ctx { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; border: 0; background: none; padding: 2px 4px; border-radius: 6px; }
+  button.ctx:hover { color: var(--text); background: var(--surface-2); }
+  .ctx .bar { width: 54px; height: 5px; }
+  .pchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 999px; padding: 0 9px 0 7px; font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pchip:hover { color: var(--text); border-color: var(--faint); }
+  .pchip.unset { border-style: dashed; }
 
   .empty { color: var(--muted); padding: 22px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
 
@@ -114,20 +155,119 @@
   .item { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 10px 14px; border-top: 1px solid var(--border); align-items: center; }
   .item:first-child { border-top: 0; }
   .item .t { font-weight: 600; overflow-wrap: anywhere; }
-  .item .s { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .item .s { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
   .item .s .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
   .item .a { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
   .item.fresh { background: color-mix(in srgb, var(--closed) 8%, transparent); }
   .closed-ago { color: var(--closed); }
   .more { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: none; color: var(--muted); padding: 9px; }
   .more:hover { color: var(--text); background: var(--surface-2); }
-  .search { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 240px; }
+  .search { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); width: 240px; }
+  select.search { width: auto; max-width: 100%; }
 
   footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; color: var(--muted); font-size: 13px; }
   .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
   .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
   .upd { display: inline-flex; gap: 8px; align-items: center; }
   .upd.ready { color: var(--ok); font-weight: 600; }
+
+  /* two-pane reader (wiki, skills) */
+  .reader { position: absolute; inset: 0; display: grid; grid-template-columns: 320px 1fr; }
+  .reader[hidden] { display: none; }
+  .r-list { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: color-mix(in srgb, var(--surface) 50%, var(--bg)); }
+  .r-tools { padding: 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+  .r-tools .search { width: 100%; }
+  .r-tools .row { flex-wrap: wrap; }
+  .r-sum { color: var(--muted); font-size: 12px; }
+  .r-items { overflow-y: auto; flex: 1; padding: 6px; }
+  .r-group { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 12px 8px 4px; }
+  .r-group small { text-transform: none; letter-spacing: 0; font-weight: 400; display: block; font-family: ui-monospace, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-err { color: var(--waiting); font-size: 12.5px; padding: 2px 8px 6px; }
+  .r-item { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 9px; border-radius: 7px; }
+  .r-item:hover { background: var(--surface-2); }
+  .r-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .r-item .nt { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-item .ns { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-item.off .nt { color: var(--muted); }
+  .tag { font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; flex: none; }
+  .r-doc { overflow-y: auto; min-width: 0; }
+  .r-doc .wrap { max-width: 900px; }
+  .doc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 6px; }
+  .doc-head h1 { font-size: 22px; margin: 0; overflow-wrap: anywhere; }
+  .doc-meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 14px; width: 100%; }
+  .doc-desc { color: var(--muted); margin: 0; width: 100%; }
+
+  /* rendered markdown */
+  .md { line-height: 1.6; overflow-wrap: anywhere; }
+  .md h1, .md h2, .md h3, .md h4 { text-transform: none; letter-spacing: -.01em; color: var(--text); display: block; margin: 1.4em 0 .5em; line-height: 1.3; }
+  .md h1 { font-size: 21px; } .md h2 { font-size: 18px; font-weight: 650; } .md h3 { font-size: 15.5px; } .md h4 { font-size: 14px; }
+  .md p { margin: .6em 0; }
+  .md ul, .md ol { padding-left: 1.5em; margin: .5em 0; }
+  .md li { margin: .2em 0; }
+  .md code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+  .md pre { background: var(--term-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  .md pre code { background: none; border: 0; padding: 0; color: #d5d9e2; }
+  .md blockquote { margin: .8em 0; padding: 2px 14px; border-left: 3px solid var(--accent); color: var(--muted); }
+  .md table { border-collapse: collapse; margin: .8em 0; display: block; overflow-x: auto; font-size: 13px; }
+  .md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; min-width: 80px; }
+  .md th { background: var(--surface-2); }
+  .md hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+  .md a { color: var(--working); }
+  .md a.wl { cursor: pointer; text-decoration: underline dotted; }
+  .md mark { background: color-mix(in srgb, var(--waiting) 40%, transparent); color: inherit; border-radius: 2px; }
+
+  /* context view */
+  .usage-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .ucard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .ucard .big { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .ucard .bar { width: 100%; height: 9px; }
+  .ucard .sub { color: var(--muted); font-size: 12.5px; }
+  .ctx-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ctx-pick > button { display: flex; flex-direction: column; gap: 5px; align-items: stretch; text-align: left; width: 230px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 10px; padding: 9px 12px; }
+  .ctx-pick > button.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .ctx-pick .nt { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctx-pick .ns { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .ctx-pick .bar { width: 100%; height: 5px; }
+  .ctx-main { display: grid; grid-template-columns: minmax(260px, 420px) 1fr; gap: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-top: 12px; }
+  .cells { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; align-content: start; }
+  .cells i { aspect-ratio: 1; border-radius: 2px; background: var(--c-free); }
+  .cells i.system { background: var(--c-system); }
+  .cells i.memory { background: var(--c-memory); }
+  .cells i.messages { background: var(--c-messages); }
+  .cells i.compact { box-shadow: inset 0 0 0 2px var(--waiting); }
+  .ctx-total { font-size: 15px; margin-bottom: 12px; }
+  .ctx-total b { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .legend .lg { display: grid; grid-template-columns: 14px 1fr auto; gap: 2px 10px; align-items: baseline; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; align-self: center; }
+  .legend .lt { font-weight: 600; }
+  .legend .lv { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .legend .ln { grid-column: 2 / span 2; color: var(--muted); font-size: 12.5px; }
+  .files { margin: -4px 0 0 24px; font-size: 12px; color: var(--muted); }
+  .files div { display: flex; gap: 10px; }
+  .files span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; }
+  .fine { color: var(--muted); font-size: 12.5px; }
+  .fine code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+  /* project editor */
+  dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(620px, 94vw); box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .dlg h3 { margin: 0; font-size: 17px; }
+  .dlg .lbl { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .dlg label.f, .dlg div.f { display: flex; flex-direction: column; gap: 6px; }
+  .dlg input[type=text] { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); font-size: 14px; }
+  .swatches { display: flex; gap: 8px; }
+  .swatches button { width: 26px; height: 26px; border-radius: 7px; border: 2px solid transparent; }
+  .swatches button.on { border-color: var(--text); }
+  .fold-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+  .fold-list label { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; cursor: pointer; }
+  .fold-list label:hover { background: var(--surface-2); }
+  .fold-list input { accent-color: var(--accent); }
+  .dlg .add { display: flex; gap: 8px; }
+  .dlg .add input { flex: 1; }
+  .dlg .btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .dlg .note { color: var(--muted); font-size: 12.5px; margin: 0; }
 
   #termView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--term-bg); }
   #termView[hidden] { display: none; }
@@ -147,6 +287,12 @@
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 50; }
   .toast.show { opacity: 1; }
   .toast.err { background: var(--closed); color: #fff; }
+  @media (max-width: 1000px) {
+    .reader { grid-template-columns: 250px 1fr; }
+    .ctx-main { grid-template-columns: 1fr; }
+    .meter .bar { width: 50px; }
+    .meter span:last-child:not(.bar) { display: none; }
+  }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
     nav.side { display: none; }
@@ -154,6 +300,8 @@
     .grid { grid-template-columns: 1fr; }
     .search { width: 100%; }
     h2 { flex-wrap: wrap; }
+    .reader { grid-template-columns: 1fr; grid-template-rows: 40% 60%; }
+    .r-list { border-right: 0; border-bottom: 1px solid var(--border); }
   }
 </style>
 </head>
@@ -163,10 +311,10 @@
   <h1>Claude Sessions</h1>
   <div class="chips" id="chips"></div>
   <div class="spacer"></div>
+  <div class="meters" id="meters"></div>
   <details class="menu" id="newMenu">
     <summary class="btn primary">+ New session</summary>
     <div class="menu-pop">
-      <div class="hint">Start Claude in this app, in:</div>
       <div id="folders"></div>
     </div>
   </details>
@@ -174,7 +322,12 @@
 
 <div class="layout">
   <nav class="side" aria-label="Sessions">
-    <button class="nav-item" id="navOverview" data-act="overview"><span class="dot" style="background:transparent"></span><span><span class="nt">Overview</span><span class="ns">Everything at a glance</span></span></button>
+    <button class="nav-item view" data-act="go" data-view="overview" id="navOverview"><span class="ico">▤</span><span class="nt">All sessions</span></button>
+    <button class="nav-item view" data-act="go" data-view="context" id="navContext"><span class="ico">◔</span><span class="nt">Context and usage</span></button>
+    <button class="nav-item view" data-act="go" data-view="skills" id="navSkills"><span class="ico">✦</span><span class="nt">Skills</span><span class="num" id="skillsNum"></span></button>
+    <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
+    <div class="side-h">Projects <button class="btn ghost" data-act="proj-new" title="New project">+</button></div>
+    <div id="sideProjects"></div>
     <div class="side-h">In this app</div>
     <div id="sideApp"></div>
     <div class="side-h">In Windows Terminal</div>
@@ -182,9 +335,10 @@
   </nav>
 
   <main>
-    <section id="overview">
+    <section id="overview" class="view-pane">
       <div class="wrap">
         <div id="banner"></div>
+        <div id="projHead"></div>
         <h2>Open now <span class="count" id="liveCount"></span></h2>
         <div id="live"></div>
 
@@ -208,12 +362,52 @@
       </div>
     </section>
 
+    <section id="contextView" class="view-pane" hidden>
+      <div class="wrap">
+        <h2>Plan usage</h2>
+        <div id="planUsage"></div>
+        <h2>Context window <span class="count" id="ctxCount"></span><span class="right"><button class="btn ghost small" data-act="ctx-refresh">Refresh</button></span></h2>
+        <div id="ctxPick" class="ctx-pick"></div>
+        <div id="ctxDetail"></div>
+      </div>
+    </section>
+
+    <section id="skillsView" class="reader" hidden>
+      <div class="r-list">
+        <div class="r-tools">
+          <input class="search" id="skillSearch" type="search" placeholder="Search skills and commands" autocomplete="off">
+          <div class="row">
+            <select class="search" id="skillSource"><option value="">Every source</option></select>
+            <select class="search" id="skillKind"><option value="">Skills and commands</option><option value="skill">Skills</option><option value="command">Commands</option></select>
+          </div>
+          <div class="r-sum" id="skillSum"></div>
+        </div>
+        <div class="r-items" id="skillList"></div>
+      </div>
+      <div class="r-doc"><div class="wrap" id="skillDoc"></div></div>
+    </section>
+
+    <section id="wikiView" class="reader" hidden>
+      <div class="r-list">
+        <div class="r-tools">
+          <input class="search" id="wikiSearch" type="search" placeholder="Search every page" autocomplete="off">
+          <div class="row"><span class="r-sum" id="wikiSum"></span><span class="spacer"></span>
+            <button class="btn ghost small" data-act="wiki-refresh">Refresh</button>
+            <button class="btn ghost small" data-act="wiki-dirs">Folders</button></div>
+        </div>
+        <div class="r-items" id="wikiList"></div>
+      </div>
+      <div class="r-doc"><div class="wrap" id="wikiDoc"></div></div>
+    </section>
+
     <section id="termView" hidden>
       <div class="term-bar">
         <span class="status" id="tStatus"></span>
         <span class="tt" id="tTitle"></span>
         <span class="tm path" id="tPath"></span>
+        <span id="tProj"></span>
         <span class="spacer"></span>
+        <span id="tCtx"></span>
         <span id="tEnd"></span>
       </div>
       <div class="host-warn" id="hostWarn" hidden></div>
@@ -222,6 +416,28 @@
     </section>
   </main>
 </div>
+
+<div class="menu-pop" id="pmenu" hidden></div>
+
+<dialog id="projDlg">
+  <form class="dlg" method="dialog" id="projForm">
+    <h3 id="projDlgTitle">New project</h3>
+    <label class="f"><span class="lbl">Name</span><input type="text" id="projName" maxlength="60" autocomplete="off" placeholder="MakerQ"></label>
+    <div class="f"><span class="lbl">Color</span><div class="swatches" id="projColors"></div></div>
+    <div class="f">
+      <span class="lbl">Folders</span>
+      <p class="note">Sessions in these folders (and the folders inside them) join the project by themselves, and + New session offers them. You can also put any session in a project by hand from its card.</p>
+      <div class="fold-list" id="projFolders"></div>
+      <div class="add"><input type="text" id="projAdd" placeholder="Add another folder, like D:\git projects\printcost" autocomplete="off"><button type="button" class="btn" data-act="proj-add">Add</button></div>
+    </div>
+    <div class="btns">
+      <button type="button" class="btn danger ghost" data-act="proj-delete" id="projDelete" style="margin-right:auto">Delete project</button>
+      <button type="button" class="btn" data-act="proj-cancel">Cancel</button>
+      <button type="button" class="btn primary" data-act="proj-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script src="/vendor/xterm.js"></script>
@@ -235,12 +451,14 @@ Object.defineProperty(Element.prototype, 'html', {
   set(v) { if (this._html !== v) { this._html = v; this.innerHTML = v; } },
 });
 let S = null;
-let editing = null;   // sessionId being renamed; live cards are not redrawn while set
+let editing = null;    // sessionId being renamed; live cards are not redrawn while set
 let histLimit = 15;
 let offline = false;
-let current = null;   // in-app terminal id on screen, null = overview
+let view = 'overview'; // overview | context | skills | wiki | term
+let projFilter = null; // project shown on the overview, null = every session
+let current = null;    // in-app terminal id on screen (view 'term')
 let hostUp = true;
-let endArmed = null;  // terminal id whose "End session" is waiting for confirmation
+let endArmed = null;   // terminal id whose "End session" is waiting for confirmation
 let disarmTimer = null;
 const lastKnown = new Map(); // terminal id -> last Claude session seen inside it (survives its exit)
 
@@ -256,8 +474,23 @@ function ago(t) {
   return Math.round(s / 86400) + 'd ago';
 }
 function dur(t) { const a = ago(t); return a === 'just now' ? 'now' : a.replace(' ago', ''); }
+function until(t) {
+  const m = Math.max(0, Math.round((t - Date.now()) / 60000));
+  if (m < 60) return `${m}m`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ${m % 60}m`;
+  return `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`;
+}
+function clock(t) {
+  const d = new Date(t);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
 function home(p) { return p ? String(p).replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~') : 'unknown folder'; }
 function label(s) { return s.nickname || s.title || s.firstPrompt || s.name || 'Untitled session'; }
+function ktok(n) { return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e5 ? 0 : 1) + 'k' : String(Math.round(n)); }
+function lvl(p) { return p >= 80 ? 'lvl-high' : p >= 50 ? 'lvl-warn' : 'lvl-ok'; }
+function bar(p) { return `<span class="bar ${lvl(p)}"><i style="width:${Math.min(100, Math.max(0, p)).toFixed(1)}%"></i></span>`; }
 
 async function api(path, body) {
   const opt = body === undefined ? {} : {
@@ -286,6 +519,122 @@ function statusOf(s) {
   if (s.status === 'waiting') return { cls: 'waiting', text: 'Needs you' };
   if (s.status === 'idle') return { cls: 'idle', text: 'Idle' };
   return { cls: 'other', text: s.status || 'Unknown' };
+}
+
+function project(id) { return S && id ? S.projects.find((p) => p.id === id) || null : null; }
+function inProject(s) { return !projFilter || s.project === projFilter; }
+function anySession(id) { return S ? [...S.live, ...S.closed, ...S.history].find((x) => x.sessionId === id) : null; }
+
+// ---- markdown --------------------------------------------------------------------
+// A small renderer for wiki, memory and skill files. Text is escaped first and
+// only the markup below becomes HTML; outside links must be http(s).
+
+function inline(text, hl) {
+  const codes = [];
+  let s = esc(text).replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+  s = s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, name, txt) => `<a class="wl" data-act="wiki-link" data-name="${name.trim()}">${txt || name}</a>`);
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => {
+    if (/^https?:\/\//i.test(url)) return `<a href="${url}" target="_blank" rel="noopener noreferrer">${txt}</a>`;
+    if (/\.md(#.*)?$/i.test(url)) {
+      let name = url.replace(/#.*$/, '').replace(/\.md$/i, '').split('/').pop();
+      try { name = decodeURIComponent(name); } catch { /* keep as written */ }
+      return `<a class="wl" data-act="wiki-link" data-name="${esc(name)}">${txt}</a>`;
+    }
+    return txt;
+  });
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^\w*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[i]}</code>`);
+  if (hl) {
+    // Highlight search hits in text only, never inside a tag.
+    const re = new RegExp('(' + esc(hl).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?![^<]*>)', 'gi');
+    s = s.replace(re, '<mark>$1</mark>');
+  }
+  return s;
+}
+
+const LIST_RE = /^\s*([-*+]|\d+[.)])\s+/;
+
+function md(src, hl) {
+  const lines = String(src).replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  const isSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+  const isTable = (k) => lines[k].includes('|') && k + 1 < lines.length && isSep(lines[k + 1]);
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    let m;
+    if (/^\s*```/.test(l)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`);
+    } else if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) {
+      const n = Math.min(4, m[1].length);
+      out.push(`<h${n}>${inline(m[2], hl)}</h${n}>`);
+      i++;
+    } else if (/^\s*(-\s*){3,}$|^\s*(\*\s*){3,}$|^\s*(_\s*){3,}$/.test(l)) {
+      out.push('<hr>');
+      i++;
+    } else if (isTable(i)) {
+      const head = cells(l);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(cells(lines[i++]));
+      out.push('<table><thead><tr>' + head.map((c) => `<th>${inline(c, hl)}</th>`).join('') + '</tr></thead><tbody>' +
+        rows.map((r) => '<tr>' + head.map((_, k) => `<td>${inline(r[k] || '', hl)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+    } else if (/^\s*>/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      out.push(`<blockquote>${md(buf.join('\n'), hl)}</blockquote>`);
+    } else if (LIST_RE.test(l)) {
+      const r = list(lines, i, hl);
+      out.push(r.html);
+      i = r.next;
+    } else if (!l.trim()) {
+      i++;
+    } else {
+      const buf = [];
+      while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*```|\s*>)/.test(lines[i]) && !LIST_RE.test(lines[i]) && !isTable(i)) buf.push(lines[i++]);
+      out.push(`<p>${inline(buf.join(' '), hl)}</p>`);
+    }
+  }
+  return out.join('\n');
+}
+
+// A list, with deeper-indented items as nested lists.
+function list(lines, start, hl) {
+  const indent = (l) => l.match(/^\s*/)[0].replace(/\t/g, '  ').length;
+  const base = indent(lines[start]);
+  const ordered = /^\s*\d+[.)]\s/.test(lines[start]);
+  const items = [];
+  let i = start;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) {
+      if (i + 1 < lines.length && LIST_RE.test(lines[i + 1]) && indent(lines[i + 1]) >= base) { i++; continue; }
+      break;
+    }
+    const ind = indent(l);
+    const m = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(l);
+    if (m && ind === base) { items.push({ text: m[2], sub: '' }); i++; continue; }
+    if (ind > base && items.length) {
+      if (m) { const r = list(lines, i, hl); items[items.length - 1].sub += r.html; i = r.next; continue; }
+      items[items.length - 1].text += ' ' + l.trim();
+      i++;
+      continue;
+    }
+    break;
+  }
+  const tag = ordered ? 'ol' : 'ul';
+  const html = `<${tag}>` + items.map((it) => {
+    const box = /^\[([ xX])\]\s+/.exec(it.text);
+    const text = box ? `${box[1] === ' ' ? '☐' : '☑'} ${it.text.slice(box[0].length)}` : it.text;
+    return `<li>${inline(text, hl)}${it.sub}</li>`;
+  }).join('') + `</${tag}>`;
+  return { html, next: i };
 }
 
 // ---- terminals ---------------------------------------------------------------
@@ -362,7 +711,7 @@ async function flushInput(id) {
 
 let resizeTimer;
 function fitCurrent() {
-  if (!current) return;
+  if (view !== 'term' || !current) return;
   const t = terms.get(current);
   if (!t) return;
   try { t.fit.fit(); } catch { return; }
@@ -389,22 +738,59 @@ function terminalInfo(id) {
   return { t, s };
 }
 
+// ---- views -------------------------------------------------------------------------
+
+function setHash(h) { history.replaceState(null, '', h ? '#' + h : location.pathname); }
+
+function paneVisibility() {
+  $('#overview').hidden = view !== 'overview';
+  $('#contextView').hidden = view !== 'context';
+  $('#skillsView').hidden = view !== 'skills';
+  $('#wikiView').hidden = view !== 'wiki';
+  $('#termView').hidden = view !== 'term';
+}
+
+// Shows an in-app terminal; null goes back to the overview.
 function show(id) {
+  if (!id) return go('overview');
   current = id;
-  if (id) history.replaceState(null, '', '#t/' + id); else history.replaceState(null, '', location.pathname);
-  $('#overview').hidden = !!id;
-  $('#termView').hidden = !id;
+  view = 'term';
+  setHash('t/' + id);
+  paneVisibility();
   for (const [tid, t] of terms) t.el.classList.toggle('on', tid === id);
-  if (id) {
-    const t = getTerm(id);
-    t.el.classList.add('on');
-    requestAnimationFrame(() => { fitCurrent(); t.term.focus(); });
-  }
+  const t = getTerm(id);
+  t.el.classList.add('on');
+  requestAnimationFrame(() => { fitCurrent(); t.term.focus(); });
   render();
 }
 
+function go(v, arg) {
+  closePmenu();
+  view = v;
+  if (v === 'overview') {
+    projFilter = arg || null;
+    histLimit = 15;
+    setHash(projFilter ? 'p/' + projFilter : '');
+  } else if (v === 'wiki') {
+    if (arg) wikiSel = arg;
+    setHash('wiki' + (wikiSel ? '/' + wikiSel : ''));
+    loadWiki();
+  } else if (v === 'skills') {
+    if (arg) skillSel = arg;
+    setHash('skills' + (skillSel ? '/' + skillSel : ''));
+    loadSkills();
+  } else if (v === 'context') {
+    if (arg) ctxSel = arg;
+    setHash('context');
+    loadContext();
+  }
+  paneVisibility();
+  render();
+  if (v === 'overview') $('#overview').scrollTop = 0;
+}
+
 function renderTermBar() {
-  if (!current || !S) return;
+  if (view !== 'term' || !current || !S) return;
   const { t, s } = terminalInfo(current);
   if (s) lastKnown.set(current, s);
   const known = s || lastKnown.get(current);
@@ -413,6 +799,8 @@ function renderTermBar() {
   $('#tStatus').html = `<span class="dot"></span>${st.text}`;
   $('#tTitle').textContent = known ? label(known) : (t && t.resumeId ? 'Reopening session…' : 'New session');
   $('#tPath').textContent = home((t && t.cwd) || (known && known.cwd));
+  $('#tProj').html = s ? pchip(s) : '';
+  $('#tCtx').html = s ? ctxBadge(s) : '';
   $('#tEnd').html = t && !t.exited
     ? (endArmed === current
       ? '<span class="tm">End this session?</span> <button class="btn small danger" data-act="kill-yes">End it</button> <button class="btn small ghost" data-act="kill-no">Keep</button>'
@@ -421,15 +809,15 @@ function renderTermBar() {
   const warn = $('#hostWarn');
   warn.hidden = hostUp;
   warn.textContent = hostUp ? '' : 'The session host is not running. Sessions started here have stopped; reopen them from Recently closed.';
-  const bar = $('#endedBar');
+  const endBar = $('#endedBar');
   if (t && t.exited) {
     const sid = (known && known.sessionId) || t.resumeId;
-    bar.hidden = false;
-    bar.html = `<span class="msg">This session ended${t.error ? ': ' + esc(t.error) : ''}.</span>` +
+    endBar.hidden = false;
+    endBar.html = `<span class="msg">This session ended${t.error ? ': ' + esc(t.error) : ''}.</span>` +
       (sid ? `<button class="btn primary" data-act="resume" data-id="${esc(sid)}" data-replace="${esc(current)}">Reopen</button>` : '') +
       `<button class="btn" data-act="forget" data-tid="${esc(current)}">Close</button>`;
   } else {
-    bar.hidden = true;
+    endBar.hidden = true;
   }
 }
 
@@ -456,7 +844,7 @@ function connectStream() {
   };
 }
 
-// ---- rendering -----------------------------------------------------------------
+// ---- header and sidebar ------------------------------------------------------------
 
 function renderHeader() {
   const n = (st) => S.live.filter((s) => s.status === st).length;
@@ -468,31 +856,98 @@ function renderHeader() {
     (waiting ? chip('--waiting', waiting, 'need you') : '') +
     chip('--ok', n('idle'), 'idle');
   document.title = (waiting ? `(${waiting} need you) ` : `(${S.live.length}) `) + 'Claude Sessions';
-  $('#folders').html = S.folders.length
-    ? S.folders.map((f) => `<button data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')
-    : '<div class="hint">No folders yet. Start one session from a terminal first.</div>';
+  renderMeters();
+  renderFolders();
+}
+
+function renderMeters() {
+  const u = S.usage;
+  let html;
+  if (!u.statusLine) {
+    html = `<button class="meter setup" data-act="go" data-view="context" title="Show how much of your Claude plan you have used">Plan usage: <b style="font-size:12.5px">set up</b></button>`;
+  } else if (!u.fiveHour && !u.sevenDay) {
+    html = `<button class="meter" data-act="go" data-view="context" title="${u.at ? 'The usage window has reset' : 'Shows up after Claude next answers in any session'}">5-hour session <b>${u.at ? '0%' : '…'}</b></button>`;
+  } else {
+    const asOf = u.at ? `, as of ${ago(u.at)}` : '';
+    const m = (name, long, w) => w
+      ? `<button class="meter" data-act="go" data-view="context" title="${esc(`${long}: ${Math.round(w.pct)}% used${w.resetsAt ? ', resets ' + clock(w.resetsAt) : ''}${asOf}`)}">${name} ${bar(w.pct)} <b>${Math.round(w.pct)}%</b>${w.resetsAt ? `<span>resets in ${until(w.resetsAt)}</span>` : ''}</button>`
+      : '';
+    html = m('5h', 'Current 5-hour session', u.fiveHour) + m('Week', 'This week', u.sevenDay);
+  }
+  $('#meters').html = html;
+}
+
+function renderFolders() {
+  const out = [];
+  for (const p of S.projects) {
+    if (!p.folders.length) continue;
+    out.push(`<div class="hint"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</div>`);
+    out.push(...p.folders.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`));
+  }
+  out.push(`<div class="hint">${S.projects.some((p) => p.folders.length) ? 'Recent folders' : 'Start Claude in this app, in:'}</div>`);
+  out.push(S.folders.length
+    ? S.folders.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')
+    : '<div class="hint">No folders yet. Start one session from a terminal first.</div>');
+  $('#folders').html = out.join('');
+}
+
+function pbarOf(s) {
+  const p = project(s.project);
+  return p ? `<span class="pbar" style="background:${esc(p.color)}" title="${esc(p.name)}"></span>` : '';
 }
 
 function renderSide() {
   if (!S) return;
-  $('#navOverview').classList.toggle('active', !current);
+  $('#navOverview').classList.toggle('active', view === 'overview' && !projFilter);
+  $('#navContext').classList.toggle('active', view === 'context');
+  $('#navSkills').classList.toggle('active', view === 'skills');
+  $('#navWiki').classList.toggle('active', view === 'wiki');
+  $('#skillsNum').textContent = skills ? skills.length : '';
+
+  const everything = [...S.live, ...S.closed, ...S.history];
+  $('#sideProjects').html = S.projects.map((p) => {
+    const open = S.live.filter((s) => s.project === p.id);
+    const needs = open.filter((s) => s.status === 'waiting').length;
+    const working = open.filter((s) => s.status === 'busy').length;
+    const sub = open.length
+      ? `${open.length} open` + (needs ? ` · ${needs} need you` : working ? ` · ${working} working` : '')
+      : `${everything.filter((s) => s.project === p.id).length} recent`;
+    return `<button class="nav-item${view === 'overview' && projFilter === p.id ? ' active' : ''}" data-act="go" data-view="overview" data-arg="${esc(p.id)}">
+      <span class="pdot" style="background:${esc(p.color)};margin-top:4px"></span><span><span class="nt">${esc(p.name)}</span><span class="ns">${sub}</span></span></button>`;
+  }).join('') || '<div class="side-empty">Group sessions by what they are for. Use + to make one.</div>';
+
   const appItems = S.terminals.list.map((t) => {
     const s = S.live.find((x) => x.appId === t.id);
     if (s) lastKnown.set(t.id, s);
     const known = s || lastKnown.get(t.id);
     const st = t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
     const title = known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
-    return `<button class="nav-item ${st.cls}${t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}">
-      <span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
+    return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}">
+      ${known ? pbarOf(known) : ''}<span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
   });
   $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
   const wt = S.live.filter((s) => !s.appId);
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
     return `<div class="nav-row"><button class="nav-item ${st.cls}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its Windows Terminal tab">
-      <span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
+      ${pbarOf(s)}<span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
       <button class="btn small ghost" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'Move this session into the app' : 'Can move once it is idle'}">Move</button></div>`;
   }).join('') || '<div class="side-empty">None.</div>';
+}
+
+// ---- overview ----------------------------------------------------------------------
+
+function pchip(s) {
+  const p = project(s.project);
+  return p
+    ? `<button class="pchip" data-act="pmenu" data-id="${esc(s.sessionId)}" title="Project (click to change)"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`
+    : `<button class="pchip unset" data-act="pmenu" data-id="${esc(s.sessionId)}" title="Put this session in a project">+ Project</button>`;
+}
+
+function ctxBadge(s) {
+  const c = s.context;
+  if (!c) return '';
+  return `<button class="ctx" data-act="go" data-view="context" data-arg="${esc(s.sessionId)}" title="Context window: ${ktok(c.used)} of ${ktok(c.size)} tokens. Click for details.">${bar(c.pct)} ${Math.round(c.pct)}% context</button>`;
 }
 
 function renderBanner() {
@@ -509,13 +964,25 @@ function renderBanner() {
     <button class="btn ghost" data-act="dismiss" data-id="${esc(c.sessionId)}">Dismiss</button></div>`;
 }
 
+function renderProjHead() {
+  const p = project(projFilter);
+  if (!p) { $('#projHead').html = ''; return; }
+  $('#projHead').html = `<div class="phead" style="--pc:${esc(p.color)}">
+    <h3>${esc(p.name)}</h3><span class="spacer"></span>
+    <button class="btn" data-act="proj-edit" data-pid="${esc(p.id)}">Edit project</button>
+    <div class="folders">${p.folders.length
+      ? p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" title="Start a new Claude session in ${esc(f)}">+ New session in ${esc(home(f))}</button>`).join('')
+      : '<span class="none">No folders yet. Sessions you put in this project by hand show up here. Add a folder to start new sessions from here.</span>'}</div></div>`;
+}
+
 function renderLive() {
-  $('#liveCount').textContent = S.live.length;
-  if (!S.live.length) {
-    $('#live').html = '<div class="empty">No Claude sessions are open. Start one with <b>+ New session</b>.</div>';
+  const shown = S.live.filter(inProject);
+  $('#liveCount').textContent = shown.length;
+  if (!shown.length) {
+    $('#live').html = `<div class="empty">${projFilter ? 'No session of this project is open.' : 'No Claude sessions are open. Start one with <b>+ New session</b>.'}</div>`;
     return;
   }
-  $('#live').html = '<div class="grid">' + S.live.map((s) => {
+  $('#live').html = '<div class="grid">' + shown.map((s) => {
     const st = statusOf(s);
     const orig = s.nickname && s.title && s.nickname !== s.title ? `<span class="orig">${esc(s.title)}</span>` : '';
     const titleHtml = editing === s.sessionId
@@ -529,12 +996,12 @@ function renderLive() {
       <div class="row"><span class="status"><span class="dot"></span>${st.text} <span class="since">· ${dur(s.statusSince)}</span></span>
         <span class="where">${s.appId ? 'in app' : 'Windows Terminal'}</span></div>
       ${titleHtml}
-      <div class="meta"><span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span><span>opened ${ago(s.startedAt)}</span>${s.kind !== 'interactive' ? `<span>${esc(s.kind)}</span>` : ''}</div>
+      <div class="meta">${pchip(s)}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span><span>opened ${ago(s.startedAt)}</span>${s.kind !== 'interactive' ? `<span>${esc(s.kind)}</span>` : ''}</div>
       ${s.lastPrompt ? `<div class="prompt" title="${esc(s.lastPrompt)}">${esc(s.lastPrompt)}</div>` : ''}
       <div class="actions">
         ${buttons}
         <button class="btn ghost" data-act="rename" data-id="${esc(s.sessionId)}">Rename</button>
-        <span class="ver">v${esc(s.version || '?')}</span>
+        <span class="ver">${ctxBadge(s) || `v${esc(s.version || '?')}`}</span>
       </div></div>`;
   }).join('') + '</div>';
   const inp = document.querySelector('.rename');
@@ -552,24 +1019,25 @@ function itemHtml(s, closed) {
       <button class="btn ghost" data-act="resume-wt" data-id="${esc(s.sessionId)}" title="Reopen in Windows Terminal instead">Terminal</button>
       ${closed ? `<button class="btn ghost" data-act="dismiss" data-id="${esc(s.sessionId)}" title="Remove from this list">✕</button>` : ''}
     </div>
-    <div class="s">${when}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span>${p ? `<span class="p" title="${esc(p)}">${esc(p)}</span>` : ''}</div>
+    <div class="s">${pchip(s)}${when}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span>${p ? `<span class="p" title="${esc(p)}">${esc(p)}</span>` : ''}</div>
   </div>`;
 }
 
 function renderClosed() {
-  $('#closedWrap').hidden = !S.closed.length;
-  $('#closedCount').textContent = S.closed.length;
-  $('#closed').html = S.closed.map((c) => itemHtml(c, true)).join('');
+  const shown = S.closed.filter(inProject);
+  $('#closedWrap').hidden = !shown.length;
+  $('#closedCount').textContent = shown.length;
+  $('#closed').html = shown.map((c) => itemHtml(c, true)).join('');
 }
 
 function renderHistory() {
   const q = $('#search').value.trim().toLowerCase();
-  const all = S.history.filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
+  const all = S.history.filter(inProject).filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
   $('#histCount').textContent = all.length;
   const shown = all.slice(0, histLimit);
   $('#history').html = shown.length
     ? shown.map((h) => itemHtml(h, false)).join('') + (all.length > shown.length ? `<button class="more" data-act="more">Show ${Math.min(15, all.length - shown.length)} more</button>` : '')
-    : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : 'No other sessions in the last 14 days.'}</div>`;
+    : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : projFilter ? 'No other sessions of this project in the last 14 days.' : 'No other sessions in the last 14 days.'}</div>`;
 }
 
 function renderFooter() {
@@ -587,13 +1055,291 @@ function renderFooter() {
   $('#optAuto').checked = S.settings.autoUpdate;
 }
 
+// ---- project menu and editor -----------------------------------------------------------
+
+let pmenuFor = null;
+function openPmenu(btn) {
+  const s = anySession(btn.dataset.id);
+  if (!s) return;
+  pmenuFor = s.sessionId;
+  const m = $('#pmenu');
+  m.innerHTML = '<div class="hint">Project for this session</div>' +
+    S.projects.map((p) => `<button data-act="assign" data-pid="${esc(p.id)}" class="${s.project === p.id ? 'on' : ''}"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}${s.project === p.id ? ' ✓' : ''}</button>`).join('') +
+    `<button data-act="assign" data-pid="none" class="${!s.project ? 'on' : ''}">No project${!s.project ? ' ✓' : ''}</button>` +
+    '<hr><button data-act="assign" data-pid="auto" title="Forget the choice made by hand; the folder decides">Go by folder</button>' +
+    '<button data-act="proj-new" data-for="1">New project…</button>';
+  m.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (r.bottom + 6 + h > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+}
+function closePmenu() { $('#pmenu').hidden = true; }
+
+const COLORS = ['#d97757', '#5b9cf6', '#4fbf8a', '#e8b04b', '#b07ce8', '#e86fa5', '#4cc3c9', '#8d95a5'];
+let editProj = null; // { id, name, color, folders, extra, assignAfter }
+
+function openProjEditor(p, assignAfter) {
+  editProj = p
+    ? { id: p.id, name: p.name, color: p.color, folders: [...p.folders], extra: [], assignAfter: null }
+    : { id: null, name: '', color: COLORS[S.projects.length % COLORS.length], folders: [], extra: [], assignAfter: assignAfter || null };
+  if (!p && assignAfter) {
+    const s = anySession(assignAfter);
+    if (s && s.cwd) editProj.folders.push(s.cwd);
+  }
+  $('#projDlgTitle').textContent = p ? 'Edit project' : 'New project';
+  $('#projName').value = editProj.name;
+  $('#projDelete').hidden = !p;
+  $('#projAdd').value = '';
+  renderProjEditor();
+  $('#projDlg').showModal();
+  $('#projName').focus();
+}
+
+function renderProjEditor() {
+  $('#projColors').innerHTML = COLORS.map((c) => `<button type="button" data-act="proj-color" data-color="${c}" class="${c === editProj.color ? 'on' : ''}" style="background:${c}" aria-label="color ${c}"></button>`).join('');
+  const choices = [];
+  for (const f of [...editProj.folders, ...editProj.extra, ...S.folders]) if (!choices.some((x) => x.toLowerCase() === f.toLowerCase())) choices.push(f);
+  $('#projFolders').innerHTML = choices.map((f) => `<label title="${esc(f)}"><input type="checkbox" value="${esc(f)}" ${editProj.folders.includes(f) ? 'checked' : ''}> ${esc(home(f))}</label>`).join('') ||
+    '<div class="side-empty" style="padding:8px">No recent folders. Add one below.</div>';
+}
+
+function readProjEditor() {
+  editProj.name = $('#projName').value;
+  editProj.folders = [...$('#projFolders').querySelectorAll('input:checked')].map((i) => i.value);
+}
+
+// ---- context and plan usage -------------------------------------------------------------
+
+let ctxData = null; // { sessions: [...] }
+let ctxSel = null;
+let ctxLoading = false;
+
+async function loadContext() {
+  if (ctxLoading) return;
+  ctxLoading = true;
+  try {
+    const list = (await api('/api/context')).sessions;
+    // A closed session picked from elsewhere is fetched by id and kept next to the open ones.
+    if (ctxSel && !list.some((x) => x.sessionId === ctxSel)) {
+      try { list.push(...(await api('/api/context?id=' + encodeURIComponent(ctxSel))).sessions); } catch { ctxSel = null; }
+    }
+    ctxData = { sessions: list };
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    ctxLoading = false;
+  }
+  renderContext();
+}
+
+function renderPlanUsage() {
+  const u = S.usage;
+  if (!u.statusLine) {
+    $('#planUsage').html = `<div class="banner info"><div class="msg">
+      <b>See how much of your Claude plan you have used.</b> Claude Code only hands your 5-hour and weekly usage to its status line,
+      so this adds a small status line to Claude Code that saves those numbers for this app. As a bonus, every Claude terminal then shows the model, context and usage on its bottom line.
+      ${u.otherStatusLine ? `<br><br>You already have a status line (<code>${esc(u.otherStatusLine)}</code>). Remove it from <code>~/.claude/settings.json</code> first if you want this one instead.` : ''}
+      <div class="fine" style="margin-top:6px">Changes one setting (<code>statusLine</code> in <code>~/.claude/settings.json</code>). Nothing leaves this PC. Turn it off here any time.</div></div>
+      ${u.otherStatusLine ? '' : '<button class="btn primary" data-act="sl-on">Turn on</button>'}</div>`;
+    return;
+  }
+  const card = (name, w) => w
+    ? `<div class="ucard"><div class="sub">${name}</div><div class="big">${Math.round(w.pct)}%</div>${bar(w.pct)}
+        <div class="sub">${w.resetsAt ? `Resets in ${until(w.resetsAt)}, at ${clock(w.resetsAt)}` : ''}</div></div>`
+    : `<div class="ucard"><div class="sub">${name}</div><div class="big">${u.at ? '0%' : '–'}</div>${bar(0)}
+        <div class="sub">${u.at ? 'This window reset; it starts counting with your next message' : 'Shows up after Claude next answers in any session'}</div></div>`;
+  $('#planUsage').html = `<div class="usage-cards">${card('Current 5-hour session', u.fiveHour)}${card('This week', u.sevenDay)}</div>
+    <p class="fine" style="margin:8px 2px">Usage of your whole Claude plan${u.at ? `, as of ${ago(u.at)}` : ''}. It updates each time Claude answers in any session on this PC.
+      <button class="btn ghost small" data-act="sl-off">Turn off</button></p>`;
+}
+
+function renderContext() {
+  if (!S || view !== 'context') return;
+  renderPlanUsage();
+  if (!ctxData) { $('#ctxPick').html = '<div class="empty" style="width:100%">Loading…</div>'; $('#ctxDetail').html = ''; return; }
+  const list = ctxData.sessions;
+  $('#ctxCount').textContent = list.length;
+  if (!list.length) {
+    $('#ctxPick').html = '<div class="empty" style="width:100%">No Claude session is open. Each open session shows up here.</div>';
+    $('#ctxDetail').html = '';
+    return;
+  }
+  if (!ctxSel || !list.some((x) => x.sessionId === ctxSel)) ctxSel = list[0].sessionId;
+  $('#ctxPick').html = list.map((c) => {
+    const st = c.live ? statusOf(c) : { cls: 'ended', text: 'Closed' };
+    return `<button class="${st.cls}${c.sessionId === ctxSel ? ' active' : ''}" data-act="ctx-pick" data-id="${esc(c.sessionId)}">
+      <span class="nt">${esc(c.title || 'Untitled session')}</span>
+      ${c.available ? bar(c.pct) : bar(0)}
+      <span class="ns"><span class="dot"></span>${c.available ? `${Math.round(c.pct)}% · ${ktok(c.used)} of ${ktok(c.size)}` : 'No replies yet'}</span></button>`;
+  }).join('');
+  const c = list.find((x) => x.sessionId === ctxSel);
+  if (!c.available) {
+    $('#ctxDetail').html = '<div class="empty" style="margin-top:12px">This session has no replies yet, so nothing has been sent to Claude.</div>';
+    return;
+  }
+  const CELLS = 200;
+  const per = c.size / CELLS;
+  const kinds = [];
+  for (const p of c.parts) for (let k = 0; k < Math.round(p.tokens / per); k++) kinds.push(p.key);
+  if (!kinds.length && c.used) kinds.push('messages'); // a near-empty window still shows something
+  const compactCell = c.compactAt && c.compactAt < c.size ? Math.min(CELLS - 1, Math.floor(c.compactAt / per)) : -1;
+  const cells = Array.from({ length: CELLS }, (_, k) => `<i class="${kinds[k] || ''}${k === compactCell ? ' compact' : ''}"></i>`).join('');
+  const free = Math.max(0, c.size - c.used);
+  const pct = (n) => (n / c.size * 100).toFixed(1) + '%';
+  const legend = c.parts.map((p) => `<div class="lg"><span class="sw" style="background:var(--c-${p.key})"></span>
+      <span class="lt">${esc(p.label)}</span><span class="lv">${p.estimate ? '≈' : ''}${ktok(p.tokens)} · ${pct(p.tokens)}</span>
+      <span class="ln">${esc(p.note)}</span></div>` +
+    (p.key === 'memory' && c.memory.length ? `<div class="files">${c.memory.map((f) => `<div><span title="${esc(f.path)}">${esc(f.label)}</span><span>≈${ktok(f.tokens)}</span></div>`).join('')}</div>` : '')).join('') +
+    `<div class="lg"><span class="sw" style="background:var(--c-free);outline:1px solid var(--faint)"></span><span class="lt">Free space</span><span class="lv">${ktok(free)} · ${pct(free)}</span>
+      <span class="ln">${c.compactAt && c.compactAt < c.size ? `Your settings compact the conversation at ${ktok(c.compactAt)} (the outlined square)` : 'Claude Code compacts the conversation before this runs out'}</span></div>`;
+  const facts = [esc(c.model || 'Model unknown'), c.sizeKnown ? '' : 'window size guessed', `last reply ${ago(c.at)}`,
+    c.compactions ? `compacted ${c.compactions}×` : '', c.cost != null ? `$${c.cost.toFixed(2)} at API prices` : '',
+    c.cwd ? `<span class="path">${esc(home(c.cwd))}</span>` : ''].filter(Boolean).join(' · ');
+  $('#ctxDetail').html = `<div class="ctx-main">
+    <div><div class="ctx-total"><b>${ktok(c.used)}</b> of ${ktok(c.size)} tokens · ${c.pct.toFixed(1)}%</div><div class="cells">${cells}</div>
+      <p class="fine" style="font-size:12px;margin:10px 0 0">Each square is ${ktok(per)} tokens.</p></div>
+    <div class="legend">
+      <div class="fine">${facts}</div>
+      ${legend}
+      <div class="fine" style="font-size:12px">The total is exact: it is what Claude's last reply was sent. The split comes from what the session started with. Type <code>/context</code> in the session for Claude Code's own breakdown.</div>
+    </div></div>`;
+}
+
+// ---- skills ---------------------------------------------------------------------------
+
+let skills = null;
+let skillSel = null;
+const skillText = new Map(); // id -> { text, where }
+
+async function loadSkills(force) {
+  if (skills && !force) return renderSkills();
+  try {
+    skills = (await api('/api/skills')).skills;
+    const sources = [...new Set(skills.map((s) => s.source))];
+    $('#skillSource').innerHTML = '<option value="">Every source</option>' + sources.map((s) => `<option>${esc(s)}</option>`).join('');
+  } catch (e) { toast(e.message, true); skills = []; }
+  renderSkills();
+  renderSide();
+}
+
+function renderSkills() {
+  if (!skills) { $('#skillList').html = '<div class="side-empty" style="padding:12px">Loading…</div>'; return; }
+  const q = $('#skillSearch').value.trim().toLowerCase();
+  const src = $('#skillSource').value;
+  const kind = $('#skillKind').value;
+  const shown = skills.filter((s) => (!src || s.source === src) && (!kind || s.kind === kind) &&
+    (!q || s.qualified.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)));
+  const on = skills.filter((s) => s.enabled);
+  $('#skillSum').textContent = `${shown.length} of ${skills.length} shown. The descriptions of the ${on.length} turned on come to ≈${ktok(on.reduce((n, s) => n + s.listTokens, 0))} tokens; Claude Code trims that list to fit its budget.`;
+  const groups = new Map();
+  for (const s of shown) { if (!groups.has(s.source)) groups.set(s.source, []); groups.get(s.source).push(s); }
+  $('#skillList').html = [...groups].map(([g, list]) => `<div class="r-group">${esc(g)} · ${list.length}</div>` +
+    list.map((s) => `<button class="r-item${s.id === skillSel ? ' active' : ''}${s.enabled ? '' : ' off'}" data-act="skill" data-id="${s.id}" title="${esc(s.description)}">
+      <span class="nt">${s.kind === 'command' ? '<span class="tag">cmd</span>' : ''}${esc('/' + s.qualified)}${s.enabled ? '' : '<span class="tag">off</span>'}</span>
+      <span class="ns">${esc(s.description || 'No description')}</span></button>`).join('')).join('') ||
+    '<div class="side-empty" style="padding:12px">Nothing matches.</div>';
+  renderSkillDoc();
+}
+
+async function renderSkillDoc() {
+  const s = skills && skills.find((x) => x.id === skillSel);
+  if (!s) {
+    $('#skillDoc').html = `<div class="empty" style="margin-top:20px">Pick a skill or command to read it.<br><br>
+      <span class="fine">Skills are instructions Claude loads when a task calls for them; you can also start one by typing / and its name.
+      Only each one's name and description sit in Claude's context until it is used.
+      Commands built into Claude Code itself, like <code>/simplify</code> or <code>/context</code>, have no file and are not listed here.</span></div>`;
+    return;
+  }
+  if (!skillText.has(s.id)) {
+    $('#skillDoc').html = '<div class="empty" style="margin-top:20px">Loading…</div>';
+    try { skillText.set(s.id, await api('/api/skills/file?id=' + s.id)); } catch (e) { $('#skillDoc').html = `<div class="empty">${esc(e.message)}</div>`; return; }
+    if (skillSel !== s.id) return;
+  }
+  const f = skillText.get(s.id);
+  const q = $('#skillSearch').value.trim();
+  $('#skillDoc').html = `<div class="doc-head"><h1>/${esc(s.qualified)}</h1>
+      <span class="tag">${s.kind}</span>${s.enabled ? '' : '<span class="tag">plugin turned off</span>'}
+      <p class="doc-desc">${esc(s.description)}</p>
+      <div class="doc-meta"><span>${esc(s.source)}</span><span>in the list ≈${ktok(s.listTokens)} tokens</span><span>whole file ≈${ktok(s.fullTokens)} tokens when used</span><span class="path" title="${esc(f.where)}">${esc(f.where)}</span></div></div>
+    <div class="md">${md(f.text, q.length > 1 ? q : '')}</div>`;
+}
+
+// ---- wiki -----------------------------------------------------------------------------
+
+let wiki = null;
+let wikiSel = null;
+
+async function loadWiki(force) {
+  if (wiki && !force) return renderWiki();
+  $('#wikiList').html = '<div class="side-empty" style="padding:12px">Loading…</div>';
+  try { wiki = (await api('/api/wiki' + (force ? '?fresh=1' : ''))).groups; } catch (e) { toast(e.message, true); wiki = []; }
+  renderWiki();
+}
+
+function wikiPages() { return wiki ? wiki.flatMap((g) => g.pages.map((p) => ({ ...p, group: g }))) : []; }
+
+function renderWiki() {
+  if (!wiki) return;
+  const q = $('#wikiSearch').value.trim().toLowerCase();
+  const total = wikiPages().length;
+  let count = 0;
+  $('#wikiList').html = wiki.map((g) => {
+    const pages = g.pages.filter((p) => !q || [p.title, p.name, p.text, p.description].some((x) => x && x.toLowerCase().includes(q)));
+    count += pages.length;
+    if (q && !pages.length) return '';
+    return `<div class="r-group">${esc(g.label)}<small title="${esc(g.where)}">${esc(g.where)}</small></div>` +
+      (g.error ? `<div class="r-err">${esc(g.error)}</div>` : '') +
+      pages.map((p) => {
+        const hits = q ? p.text.toLowerCase().split(q).length - 1 : 0;
+        return `<button class="r-item${p.id === wikiSel ? ' active' : ''}" data-act="wiki" data-id="${p.id}">
+          <span class="nt">${p.type ? `<span class="tag">${esc(p.type)}</span>` : ''}${esc(p.title)}</span>
+          <span class="ns">${hits ? `${hits} match${hits > 1 ? 'es' : ''} · ` : ''}${esc(p.description || 'updated ' + ago(p.mtime))}</span></button>`;
+      }).join('');
+  }).join('') || '<div class="side-empty" style="padding:12px">Nothing matches.</div>';
+  $('#wikiSum').textContent = q ? `${count} of ${total} pages` : `${total} pages`;
+  renderWikiDoc();
+}
+
+function renderWikiDoc() {
+  const pages = wikiPages();
+  let p = pages.find((x) => x.id === wikiSel);
+  if (!p && !wikiSel) p = pages.find((x) => x.group.label === 'Wiki') || pages[0];
+  if (!p) {
+    $('#wikiDoc').html = `<div class="empty" style="margin-top:20px">${pages.length ? 'Pick a page.' : 'No pages found. Use Folders to say where your wiki lives.'}</div>`;
+    return;
+  }
+  const q = $('#wikiSearch').value.trim();
+  // The page title is shown in the header, so a leading "# Title" line is not repeated.
+  $('#wikiDoc').html = `<div class="doc-head"><h1>${esc(p.title)}</h1>
+      ${p.description ? `<p class="doc-desc">${esc(p.description)}</p>` : ''}
+      <div class="doc-meta"><span>${esc(p.group.label)}</span><span title="${esc(new Date(p.mtime).toLocaleString())}">updated ${ago(p.mtime)}</span><span class="path">${esc(p.file)}</span></div></div>
+    ${p.truncated ? '<div class="banner info"><div class="msg">This page is long; only its first 256 KB are shown.</div></div>' : ''}
+    <div class="md">${md(p.text.replace(/^\s*#\s+.+\n?/, ''), q.length > 1 ? q : '')}</div>`;
+}
+
+function followWikiLink(name) {
+  const n = name.toLowerCase();
+  const pages = wikiPages();
+  const p = pages.find((x) => x.name.toLowerCase() === n) || pages.find((x) => x.title.toLowerCase() === n);
+  if (!p) return toast(`No page named ${name}`, true);
+  wikiSel = p.id;
+  setHash('wiki/' + p.id);
+  renderWiki();
+  $('#wikiDoc').parentElement.scrollTop = 0;
+}
+
+// ---- render loop ------------------------------------------------------------------------
+
 function render() {
   if (!S) return;
   renderHeader();
   renderSide();
-  renderTermBar();
-  if (current) return; // the overview is hidden; skip its work
+  if (view === 'term') return renderTermBar();
+  if (view === 'context') return renderPlanUsage();
+  if (view !== 'overview') return;
   renderBanner();
+  renderProjHead();
   if (!editing) renderLive();
   renderClosed();
   renderHistory();
@@ -614,13 +1360,14 @@ function refresh() {
           terms.get(id).term.dispose();
           terms.get(id).el.remove();
           terms.delete(id);
-          if (current === id) { current = null; show(null); }
+          if (current === id) { current = null; if (view === 'term') go('overview'); }
         }
       }
+      if (projFilter && !project(projFilter)) projFilter = null;
       render();
     } catch {
       offline = true;
-      if (!current && S) renderBanner();
+      if (view === 'overview' && S) renderBanner();
     } finally {
       refreshing = null;
     }
@@ -654,10 +1401,11 @@ function saveRename(inp) {
 
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-act]');
+  if (!e.target.closest('#pmenu') && !(b && b.dataset.act === 'pmenu')) closePmenu();
   if (!b) return;
   const id = b.dataset.id;
   switch (b.dataset.act) {
-    case 'overview': show(null); break;
+    case 'go': go(b.dataset.view, b.dataset.arg); break;
     case 'open': show(b.dataset.tid); break;
     case 'focus': b.disabled = true; await act('/api/focus', { sessionId: id }); b.disabled = false; break;
     case 'move': b.disabled = true; await openNew('/api/move', { sessionId: id }, 'Moving into the app…'); break;
@@ -688,10 +1436,74 @@ document.addEventListener('click', async (e) => {
       b.disabled = true;
       if (await act('/api/update/install', {}, 'Installing; sessions in the app keep running')) setTimeout(() => location.reload(), 6000);
       break;
+
+    // projects
+    case 'pmenu': if (!$('#pmenu').hidden && pmenuFor === id) closePmenu(); else openPmenu(b); break;
+    case 'assign': {
+      closePmenu();
+      const pid = b.dataset.pid;
+      await act('/api/projects/assign', { sessionId: pmenuFor, projectId: pid === 'auto' ? null : pid }, pid === 'auto' ? 'Its folder decides again' : 'Saved');
+      break;
+    }
+    case 'proj-new': closePmenu(); openProjEditor(null, b.dataset.for ? pmenuFor : null); break;
+    case 'proj-edit': openProjEditor(project(b.dataset.pid)); break;
+    case 'proj-color': readProjEditor(); editProj.color = b.dataset.color; renderProjEditor(); break;
+    case 'proj-add': {
+      const v = $('#projAdd').value.trim().replace(/^"(.*)"$/, '$1');
+      if (!v) break;
+      readProjEditor();
+      if (!editProj.extra.includes(v)) editProj.extra.unshift(v);
+      if (!editProj.folders.includes(v)) editProj.folders.push(v);
+      $('#projAdd').value = '';
+      renderProjEditor();
+      break;
+    }
+    case 'proj-cancel': $('#projDlg').close(); break;
+    case 'proj-save': {
+      readProjEditor();
+      const r = await act('/api/projects/save', { id: editProj.id, name: editProj.name, color: editProj.color, folders: editProj.folders }, editProj.id ? 'Project saved' : 'Project made');
+      if (!r) break;
+      $('#projDlg').close();
+      if (editProj.assignAfter) await act('/api/projects/assign', { sessionId: editProj.assignAfter, projectId: r.id });
+      else if (!editProj.id) go('overview', r.id);
+      break;
+    }
+    case 'proj-delete':
+      if (b.dataset.armed) {
+        const r = await act('/api/projects/delete', { id: editProj.id }, 'Project deleted; its sessions are untouched');
+        if (r) { $('#projDlg').close(); if (projFilter === editProj.id) go('overview'); }
+      } else {
+        b.dataset.armed = '1';
+        b.textContent = 'Click again to delete';
+        setTimeout(() => { delete b.dataset.armed; b.textContent = 'Delete project'; }, 4000);
+      }
+      break;
+
+    // context and usage
+    case 'ctx-pick': ctxSel = id; renderContext(); break;
+    case 'ctx-refresh': loadContext(); break;
+    case 'sl-on': b.disabled = true; await act('/api/usage/statusline', { on: true }, 'Turned on. Numbers show up after Claude next answers.'); renderPlanUsage(); break;
+    case 'sl-off': await act('/api/usage/statusline', { on: false }, 'Status line removed from Claude Code'); renderPlanUsage(); break;
+
+    // skills and wiki
+    case 'skill': skillSel = id; setHash('skills/' + id); renderSkills(); $('#skillDoc').parentElement.scrollTop = 0; break;
+    case 'wiki': wikiSel = id; setHash('wiki/' + id); renderWiki(); $('#wikiDoc').parentElement.scrollTop = 0; break;
+    case 'wiki-link': followWikiLink(b.dataset.name); break;
+    case 'wiki-refresh': loadWiki(true); break;
+    case 'wiki-dirs': {
+      const v = window.prompt('Wiki folders: full paths, separated by ; (every .md file directly inside each one is shown)', S.settings.wikiDirs.join('; '));
+      if (v === null) break;
+      const dirs = v.split(';').map((x) => x.trim()).filter(Boolean);
+      if (await act('/api/settings', { wikiDirs: dirs }, 'Saved')) loadWiki(true);
+      break;
+    }
   }
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePmenu();
+  if (e.target.id === 'projAdd' && e.key === 'Enter') { e.preventDefault(); $('[data-act="proj-add"]').click(); return; }
+  if (e.target.id === 'projName' && e.key === 'Enter') { e.preventDefault(); $('[data-act="proj-save"]').click(); return; }
   const inp = e.target.closest && e.target.closest('.rename');
   if (!inp) return;
   if (e.key === 'Enter') saveRename(inp);
@@ -704,17 +1516,29 @@ document.addEventListener('click', (e) => {
   const m = $('#newMenu');
   if (m.open && !m.contains(e.target)) m.open = false;
 });
+$('#overview').addEventListener('scroll', closePmenu);
 
 $('#search').addEventListener('input', () => { histLimit = 15; if (S) renderHistory(); });
+for (const id of ['#skillSearch', '#skillSource', '#skillKind']) $(id).addEventListener('input', renderSkills);
+$('#wikiSearch').addEventListener('input', renderWiki);
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? 'Starts with Windows' : 'Will not start with Windows'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
+function route() {
+  const h = location.hash.slice(1);
+  let m;
+  if ((m = /^t\/([0-9a-f-]{36})$/.exec(h)) && S && S.terminals.list.some((t) => t.id === m[1])) return show(m[1]);
+  if ((m = /^p\/([0-9a-f-]{36})$/.exec(h)) && project(m[1])) return go('overview', m[1]);
+  if ((m = /^(wiki|skills)(?:\/([0-9a-f]{12}))?$/.exec(h))) return go(m[1], m[2]);
+  if (h === 'context') return go('context');
+  go('overview');
+}
+
 connectStream();
-refresh().then(() => {
-  const m = /^#t\/([0-9a-f-]{36})$/.exec(location.hash);
-  if (m && S && S.terminals.list.some((t) => t.id === m[1])) show(m[1]);
-});
+refresh().then(route);
 setInterval(refresh, 3000);
+// The context view reads transcripts, so it refreshes less often and only while on screen.
+setInterval(() => { if (view === 'context' && !document.hidden) loadContext(); }, 10000);
 </script>
 </body>
 </html>

@@ -2,6 +2,16 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.2.0 (2026-10-28)
+
+Projects, plan usage, context, skills and the wiki, all in the app.
+
+- **Projects**: group sessions like the Claude desktop app does. A project has a name, a color and folders; sessions in those folders join it by themselves, and any session can be put in a project (or kept out of one) from the chip on its card. Each project has its own page with its open, closed and past sessions and a **New session** button per folder. The sidebar lists projects with how many sessions are open, working or waiting.
+- **Plan usage in the header**: how much of the current 5-hour session and of the week you have used, with the time left until each resets. Claude Code only shares these numbers with its status line, so **Turn on** (under Context and usage) adds a small status line that saves them for the app. It also shows the model, context and usage at the bottom of every Claude terminal. It never replaces a status line you already have, and **Turn off** removes it.
+- **Context and usage** view, like `/context`: a square grid of each open session's context window, split into what the session started with, memory files and the conversation, plus free space and where your settings compact it. Every session card and terminal bar shows its context percentage too.
+- **Skills**: every skill and command Claude can use (personal, claude.ai, plugins, projects), searchable and filterable, with the full instructions of each one and how many tokens it costs.
+- **Wiki**: the pages of the wiki on `\\Mobius\Chris` and everything in Claude's memory, searchable, with tables and links between pages. **Folders** changes where the wiki lives.
+
 ## 1.1.0 (2026-10-28)
 
 Claude sessions can now run inside the app, so there is no need to go back to Windows Terminal.
