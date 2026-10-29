@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.1 (2026-10-29)
+
+Use the app from your phone over Tailscale.
+
+- **Phone access** in Settings (off until you turn it on): shows this PC's Tailscale IP, the port and the address to open on the phone, plus the MagicDNS name, each with a Copy button.
+- Phones pair once with a 6 digit code from **Pair a phone**. A code works once, lasts 5 minutes and dies after 5 wrong tries. Paired devices are listed with when they were last used, and **Remove** locks one out right away.
+- The app only listens on the Tailscale address, never on the home network or the internet, and it answers only devices on your tailnet. Pairing controls work on the PC only.
+- On a phone-sized screen the sidebar opens from a menu button, and terminals get a row of keys a phone keyboard lacks: Esc, Tab, Shift+Tab, arrows, Enter and Ctrl+C.
+
 ## 1.5.0 (2026-10-29)
 
 Runs on macOS too. Windows works as before.

@@ -14,6 +14,7 @@ A local app for every Claude Code session on this PC or Mac: run sessions in bui
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
 - **Wiki**: the markdown pages in the wiki folders (`\\Mobius\Chris` by default) and Claude's auto memory, searchable.
 - **Settings** (gear, bottom left): updates, Start with Windows, app theme (System, Dark, Light) and the terminal look (7 own looks, 15 popular themes such as Dracula, Nord and Catppuccin, or your own colors; text size). The icon next to **All sessions** checks for updates in one click.
+- **Phone access** (Settings, off by default): use the app from a phone over Tailscale. Settings shows the Tailscale IP, port and address; a phone pairs once with a 6 digit code. On small screens the sidebar is a drawer and terminals get an Esc / Tab / arrows / Enter / Ctrl+C key row.
 - **Rename**, **New session** in a recent or project folder, **self-update**.
 
 ## How it works
@@ -37,7 +38,8 @@ Ctrl+C copies when text is selected and interrupts Claude otherwise. Ctrl+V past
 Tab jumping for Windows Terminal sessions uses Windows UI Automation (`scripts/focus-tab.ps1`).
 
 - Node 18+, no npm dependencies.
-- Port **8930**, bound to 127.0.0.1 only. Tests use **8931**. The API refuses other hosts, other origins and cross-site requests, so no web page can type into a session.
+- Port **8930**, bound to 127.0.0.1. Tests use **8931**. The API refuses other hosts, other origins and cross-site requests, so no web page can type into a session.
+- Phone access adds a second listener on the same port, bound to this PC's Tailscale IPv4 only (found with `tailscale status --json`, rechecked every 30 seconds). It answers only 100.64.0.0/10 peers that name the Tailscale IP or MagicDNS name. Anything but the pairing page needs a paired device's cookie (HttpOnly, SameSite=Strict); `data\remote.json` keeps only a SHA-256 of each device token. `/api/remote*` (turn on or off, codes, devices) answers on 127.0.0.1 only.
 - App state (nicknames, closed list, projects, settings), status line data and logs: `%LOCALAPPDATA%\ClaudeSessions\data` (`state.json`, `server.log`, `host.log`).
 
 ## Install
@@ -95,6 +97,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `lib/terminal.js` + `scripts/focus-tab.ps1` | Windows Terminal: go to tab, reopen, new session |
 | `lib/updater.js` | Tag check and install |
 | `lib/startup.js` | Start with Windows shortcut |
+| `lib/remote.js` + `public/pair.html` | Phone access: Tailscale address, pairing codes, paired devices |
 | `launch.js` + `scripts/launch.vbs` | One-click launcher (no console window) |
 | `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
 | `public/index.html` | The app |

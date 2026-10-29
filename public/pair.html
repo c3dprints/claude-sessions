@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Sessions</title>
+<link rel="icon" href="/icon.svg">
+<style>
+  :root { --bg: #0e1116; --surface: #161a21; --border: #262c36; --text: #e8eaef; --muted: #8d95a3; --accent: #d97757; --bad: #e5534b; color-scheme: dark; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f6f8; --surface: #ffffff; --border: #e1e4ea; --text: #1b1f27; --muted: #5d6573; --bad: #d23f3f; color-scheme: light; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .card { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .head img { width: 30px; height: 30px; }
+  h1 { font-size: 19px; margin: 0; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  input { width: 100%; font: 600 26px/1 ui-monospace, Consolas, monospace; letter-spacing: .35em; text-align: center; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  button { width: 100%; margin-top: 12px; padding: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: 600 16px system-ui, sans-serif; }
+  button:disabled { opacity: .5; }
+  .err { color: var(--bad); min-height: 1.5em; margin: 10px 0 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<form class="card" id="f">
+  <div class="head"><img src="/icon.svg" alt=""><h1>Claude Sessions</h1></div>
+  <p>On your PC, open <b>Settings</b>, then <b>Phone access</b>, and tap <b>Pair a phone</b>. Type the 6 digit code here. Each phone pairs once.</p>
+  <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" aria-label="Pairing code" required>
+  <button id="go">Pair this phone</button>
+  <div class="err" id="err" role="alert"></div>
+</form>
+<script>
+'use strict';
+const f = document.getElementById('f');
+const btn = document.getElementById('go');
+const err = document.getElementById('err');
+f.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  btn.disabled = true;
+  err.textContent = '';
+  try {
+    const r = await fetch('/api/remote/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Claude-Sessions': '1' },
+      body: JSON.stringify({ code: document.getElementById('code').value }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    location.replace('/');
+  } catch (x) {
+    err.textContent = x.message.charAt(0).toUpperCase() + x.message.slice(1);
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -95,13 +95,16 @@ function fakeClaude() {
   return { dir, work };
 }
 
-function request(port, method, p, { body, headers = {} } = {}) {
+// Stands in for the Tailscale address in the phone access tests.
+const REMOTE_IP = '127.0.0.2';
+
+function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
-    const req = http.request({ host: '127.0.0.1', port, method, path: p, headers: { Host: `127.0.0.1:${port}`, ...headers, ...(data ? { 'Content-Type': 'application/json' } : {}) } }, (res) => {
+    const req = http.request({ host: ip, port, method, path: p, headers: { Host: `${ip}:${port}`, ...headers, ...(data ? { 'Content-Type': 'application/json' } : {}) } }, (res) => {
       let s = '';
       res.on('data', (c) => { s += c; });
-      res.on('end', () => { let j = null; try { j = JSON.parse(s); } catch { /* html */ } resolve({ status: res.statusCode, json: j, text: s }); });
+      res.on('end', () => { let j = null; try { j = JSON.parse(s); } catch { /* html */ } resolve({ status: res.statusCode, json: j, text: s, headers: res.headers }); });
     });
     req.on('error', reject);
     req.setTimeout(5000, () => req.destroy(new Error(`${method} ${p} timed out`)));
@@ -112,6 +115,19 @@ function request(port, method, p, { body, headers = {} } = {}) {
 
 (async () => {
   const fx = fakeClaude();
+
+  await check('phone access: tailnet range, device names, a code dies after 5 wrong tries', () => {
+    const rl = require('../lib/remote');
+    assert.ok(rl.isTailnetPeer('100.66.198.118') && rl.isTailnetPeer('::ffff:100.64.0.1'));
+    assert.ok(!rl.isTailnetPeer('100.63.0.1') && !rl.isTailnetPeer('100.128.0.1') && !rl.isTailnetPeer('192.168.1.5'));
+    assert.strictEqual(rl.deviceName('Mozilla/5.0 (Linux; Android 15) Chrome/130.0 Mobile Safari/537.36'), 'Android, Chrome');
+    const r = new rl.Remote(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-remote-')));
+    const { code } = r.newCode();
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) assert.throws(() => r.pair(wrong, ''));
+    assert.throws(() => r.pair(code, ''), /no pairing code/, 'the right code no longer works after 5 wrong ones');
+    assert.strictEqual(r.check('cs_device=' + 'x'.repeat(43)), null);
+  });
 
   await check('tasklist parsing keeps only claude.exe', () => {
     const pids = sessions.parseTasklist('"claude.exe","94796","Console","1","400,000 K"\r\n"node.exe","5","Console","1","1 K"\r\nINFO: No tasks');
@@ -428,7 +444,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: {
       ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
-      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'),
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), ...(WIN ? { CS_REMOTE_IP: REMOTE_IP } : {}),
     },
     stdio: 'ignore', windowsHide: true,
   });
@@ -618,6 +634,52 @@ function request(port, method, p, { body, headers = {} } = {}) {
       s = (await request(PORT, 'GET', '/api/state')).json.settings;
       assert.strictEqual(s.terminal, null);
       assert.strictEqual(s.theme, 'system');
+    });
+
+    // macOS only answers on 127.0.0.1 out of the box, so the stand-in tailnet address is Windows only.
+    if (WIN) await check('http: phone access: off by default, pairs once by code, cookie only, controls stay on the PC', async () => {
+      const R = (method, p, opts = {}) => request(PORT, method, p, { ...opts, ip: REMOTE_IP });
+      await assert.rejects(R('GET', '/'), 'nothing listens on the tailnet address while it is off');
+      let info = (await request(PORT, 'GET', '/api/remote')).json;
+      assert.strictEqual(info.enabled, false);
+      assert.strictEqual(info.url, `http://${REMOTE_IP}:${PORT}`);
+      assert.strictEqual((await request(PORT, 'POST', '/api/remote/code', { body: {}, headers: H })).status, 400, 'no code while off');
+      info = (await request(PORT, 'POST', '/api/remote', { body: { enabled: true }, headers: H })).json;
+      assert.strictEqual(info.listening, REMOTE_IP);
+
+      const page = await R('GET', '/');
+      assert.ok(page.status === 200 && page.text.includes('Pair this phone'), 'an unpaired phone gets the pairing page');
+      assert.strictEqual((await R('GET', '/api/state')).status, 401);
+      assert.strictEqual((await R('GET', '/api/term/stream')).status, 401);
+      assert.strictEqual((await R('GET', '/', { headers: { Host: `evil.example:${PORT}` } })).status, 403, 'other host names are refused');
+      assert.strictEqual((await R('POST', '/api/remote/pair', { body: { code: '123456' }, headers: H })).status, 400, 'no code open yet');
+
+      const code = (await request(PORT, 'POST', '/api/remote/code', { body: {}, headers: H })).json.code.code;
+      assert.match(code, /^\d{6}$/);
+      assert.strictEqual((await R('POST', '/api/remote/pair', { body: { code: code === '000000' ? '111111' : '000000' }, headers: H })).status, 403);
+      const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1';
+      const ok = await R('POST', '/api/remote/pair', { body: { code }, headers: { ...H, 'User-Agent': ua } });
+      assert.strictEqual(ok.status, 200);
+      const set = ok.headers['set-cookie'][0];
+      assert.ok(/HttpOnly/.test(set) && /SameSite=Strict/.test(set));
+      const cookie = set.split(';')[0];
+      assert.strictEqual((await R('POST', '/api/remote/pair', { body: { code }, headers: H })).status, 400, 'a code works once');
+
+      const st = await R('GET', '/api/state', { headers: { Cookie: cookie } });
+      assert.strictEqual(st.status, 200);
+      assert.ok(Array.isArray(st.json.live) && st.json.app.name === 'Claude Sessions');
+      assert.strictEqual((await R('GET', '/api/remote', { headers: { Cookie: cookie } })).status, 403, 'a phone cannot see pairing controls');
+      assert.strictEqual((await R('POST', '/api/remote/code', { body: {}, headers: { ...H, Cookie: cookie } })).status, 403);
+      assert.strictEqual((await R('POST', '/api/rename', { body: {}, headers: { ...H, Cookie: cookie, Origin: 'http://evil.example' } })).status, 403);
+      assert.ok(!fs.readFileSync(path.join(data, 'remote.json'), 'utf8').includes(cookie.split('=')[1]), 'only a hash is stored');
+
+      info = (await request(PORT, 'GET', '/api/remote')).json;
+      assert.strictEqual(info.devices.length, 1);
+      assert.strictEqual(info.devices[0].name, 'iPhone, Safari');
+      await request(PORT, 'POST', '/api/remote/forget', { body: { id: info.devices[0].id }, headers: H });
+      assert.strictEqual((await R('GET', '/api/state', { headers: { Cookie: cookie } })).status, 401, 'a removed phone is locked out');
+      await request(PORT, 'POST', '/api/remote', { body: { enabled: false }, headers: H });
+      await assert.rejects(R('GET', '/'), 'turning it off closes the listener');
     });
 
     await check('http: context of open sessions, plan usage switch', async () => {

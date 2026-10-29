@@ -1,7 +1,9 @@
 'use strict';
 // Claude Sessions: a local dashboard of every Claude Code terminal session,
 // with built-in terminals for sessions started from the app.
-// Zero dependencies. Listens on 127.0.0.1 only; it runs terminals, so it is never exposed.
+// Zero dependencies. Listens on 127.0.0.1; it runs terminals, so it is never exposed
+// to the network. Phone access (off by default) adds a second listener on this PC's
+// Tailscale address only, and every request there needs a paired device's cookie.
 
 const http = require('http');
 const fs = require('fs');
@@ -20,6 +22,7 @@ const usage = require('./lib/usage');
 const { Store, projectOf } = require('./lib/store');
 const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
+const remoteLib = require('./lib/remote');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
@@ -37,6 +40,9 @@ const FAKE_PIDS = process.env.CS_FAKE_PIDS !== undefined
 const TEST_MODE = process.env.CS_TEST === '1';
 
 const store = new Store(DATA_DIR);
+const remote = new remoteLib.Remote(DATA_DIR);
+// Tests point phone access at a spare loopback address instead of asking Tailscale.
+const REMOTE_IP_OVERRIDE = process.env.CS_REMOTE_IP || null;
 const host = new HostClient({ dataDir: DATA_DIR, pipe: process.env.CS_HOST_PIPE });
 const LOG = path.join(DATA_DIR, 'server.log');
 
@@ -116,6 +122,7 @@ function snapshot() {
       wikiDirs: store.state.settings.wikiDirs,
       theme: store.state.settings.theme || 'system',
       terminal: store.state.settings.terminal || null,
+      remote: !!store.state.settings.remote,
     },
   };
 }
@@ -657,7 +664,143 @@ const routes = {
     await installUpdate(u.latest);
     return { ok: true, restarting: true };
   },
+
+  // Phone access. handle() answers these on the PC only, never over the tailnet.
+  'GET /api/remote': () => remoteInfo(),
+
+  'POST /api/remote': async (b) => {
+    if (typeof b.enabled !== 'boolean') throw fail(400, 'enabled must be true or false');
+    store.state.settings.remote = b.enabled;
+    if (!b.enabled) remote.pending = null;
+    store.save();
+    log(`phone access turned ${b.enabled ? 'on' : 'off'}`);
+    await syncRemote();
+    return remoteInfo();
+  },
+
+  'POST /api/remote/code': () => {
+    if (!store.state.settings.remote) throw fail(400, 'turn on phone access first');
+    remote.newCode();
+    return remoteInfo();
+  },
+
+  'POST /api/remote/forget': (b) => {
+    const id = String(b.id || '');
+    if (id !== 'all' && !/^[0-9a-f]{12}$/.test(id)) throw fail(400, 'bad device id');
+    remote.forget(id);
+    // Drop open phone connections; devices that are still paired reconnect by themselves.
+    if (remoteSrv && remoteSrv.closeAllConnections) remoteSrv.closeAllConnections();
+    return remoteInfo();
+  },
 };
+
+// ---- phone access over Tailscale ----------------------------------------------
+
+let ts = { installed: false, running: false, ip: null, dns: null, at: 0 };
+let remoteSrv = null;
+let remoteBound = null;
+let remoteError = null;
+let remoteSyncing = false;
+
+async function tailscale(maxAgeMs = 10000) {
+  if (Date.now() - ts.at < maxAgeMs) return ts;
+  const t = REMOTE_IP_OVERRIDE
+    ? { installed: true, running: true, ip: REMOTE_IP_OVERRIDE, dns: null }
+    : await remoteLib.tailscaleStatus();
+  ts = { ...t, at: Date.now() };
+  return ts;
+}
+
+// Listens on the Tailscale address while phone access is on and Tailscale is up,
+// and follows the address if it changes. Never binds to the LAN or 0.0.0.0.
+async function syncRemote() {
+  if (remoteSyncing) return;
+  remoteSyncing = true;
+  try {
+    const want = !!store.state.settings.remote;
+    const t = want ? await tailscale(0) : null;
+    const ip = t && t.running ? t.ip : null;
+    if (ip === remoteBound && (ip || !remoteSrv)) return;
+    if (remoteSrv) {
+      const old = remoteSrv;
+      remoteSrv = null;
+      remoteBound = null;
+      old.close();
+      if (old.closeAllConnections) old.closeAllConnections();
+      log('phone access listener closed');
+    }
+    if (!ip) return;
+    await new Promise((resolve) => {
+      const srv = http.createServer((req, res) => handle(req, res, true));
+      srv.once('error', (e) => {
+        remoteError = e.message;
+        log(`phone access could not listen on ${ip}:${PORT}: ${e.message}`);
+        // Right after an update the old server can still hold the address for a moment.
+        if (e.code === 'EADDRINUSE') setTimeout(syncRemote, 2000);
+        resolve();
+      });
+      srv.listen(PORT, ip, () => {
+        remoteSrv = srv;
+        remoteBound = ip;
+        remoteError = null;
+        log(`phone access on http://${ip}:${PORT}`);
+        resolve();
+      });
+    });
+  } catch (e) {
+    remoteError = e.message;
+    log(`phone access: ${e.stack || e}`);
+  } finally {
+    remoteSyncing = false;
+  }
+}
+
+async function remoteInfo() {
+  const t = await tailscale();
+  return {
+    enabled: !!store.state.settings.remote,
+    port: PORT,
+    tailscale: { installed: t.installed, running: t.running, ip: t.ip, dns: t.dns },
+    listening: remoteBound,
+    error: remoteBound ? null : remoteError,
+    url: t.ip ? `http://${t.ip}:${PORT}` : null,
+    dnsUrl: t.dns ? `http://${t.dns}:${PORT}` : null,
+    code: remote.code(),
+    devices: remote.list(),
+  };
+}
+
+// The tailnet listener: the request must come from a tailnet address, name this PC's
+// tailnet address or MagicDNS name, and stay same-origin.
+function remoteGuard(req) {
+  if (!REMOTE_IP_OVERRIDE && !remoteLib.isTailnetPeer(req.socket.remoteAddress)) return 'not on your tailnet';
+  const h = String(req.headers.host || '').toLowerCase();
+  const names = [remoteBound, ts.dns, ts.dns && ts.dns.split('.')[0]].filter(Boolean).map((n) => `${n}:${PORT}`);
+  if (!names.includes(h)) return 'bad host';
+  const site = req.headers['sec-fetch-site'];
+  if (req.url.startsWith('/api/') && site && site !== 'same-origin' && site !== 'none') return 'cross-site request';
+  const o = req.headers.origin;
+  if (o && o.toLowerCase() !== `http://${h}`) return 'bad origin';
+  if (req.method === 'POST' && req.headers['x-claude-sessions'] !== '1') return 'missing header';
+  return null;
+}
+
+const pairTries = [];
+async function pairDevice(req, res) {
+  const now = Date.now();
+  while (pairTries.length && now - pairTries[0] > 60000) pairTries.shift();
+  if (pairTries.length >= 10) return send(res, 429, { error: 'too many tries; wait a minute' });
+  pairTries.push(now);
+  try {
+    const b = await readBody(req);
+    const token = remote.pair(b.code, req.headers['user-agent']);
+    log(`paired ${remoteLib.deviceName(req.headers['user-agent'])} from ${req.socket.remoteAddress}`);
+    res.setHeader('Set-Cookie', `${remoteLib.COOKIE}=${token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict`);
+    send(res, 200, { ok: true });
+  } catch (e) {
+    send(res, Number.isInteger(e.code) ? e.code : 500, { error: e.message });
+  }
+}
 
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
@@ -667,10 +810,21 @@ const STATIC = {
   '/vendor/addon-fit.js': ['vendor/addon-fit.js', 'text/javascript; charset=utf-8'],
 };
 
-const server = http.createServer(async (req, res) => {
-  const why = guard(req);
+async function handle(req, res, isRemote = false) {
+  const why = isRemote ? remoteGuard(req) : guard(req);
   if (why) return send(res, 403, { error: why });
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (isRemote) {
+    if (!remote.check(req.headers.cookie)) {
+      // Not paired: only the pairing page, its icon and the pairing call.
+      if (req.method === 'GET' && url.pathname === '/') return send(res, 200, fs.readFileSync(path.join(APP_DIR, 'public', 'pair.html')), 'text/html; charset=utf-8');
+      if (req.method === 'POST' && url.pathname === '/api/remote/pair') return pairDevice(req, res);
+      if (!(req.method === 'GET' && url.pathname === '/icon.svg')) return send(res, 401, { error: 'pair this phone first' });
+    } else if (url.pathname.startsWith('/api/remote')) {
+      return send(res, 403, { error: 'phone access is managed on the PC' });
+    }
+  }
 
   if (req.method === 'GET' && STATIC[url.pathname]) {
     const [file, type] = STATIC[url.pathname];
@@ -688,7 +842,9 @@ const server = http.createServer(async (req, res) => {
     if (code === 500) log(`${url.pathname}: ${e.stack || e}`);
     send(res, code, { error: e.message });
   }
-});
+}
+
+const server = http.createServer((req, res) => handle(req, res, false));
 
 // Attached once: a callback passed to listen() would be added again on every retry.
 server.once('listening', () => {
@@ -696,6 +852,8 @@ server.once('listening', () => {
   poll();
   setInterval(poll, POLL_MS);
   host.attach();
+  syncRemote();
+  setInterval(syncRemote, 30000);
   // An update may have changed the status line script; refresh the copy Claude Code runs.
   try { if (usage.statusLineState(CLAUDE_DIR).enabled) usage.installScript(DATA_DIR, APP_DIR); } catch (e) { log(`status line copy failed: ${e.message}`); }
   usage.pruneStatus(DATA_DIR);

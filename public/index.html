@@ -351,6 +351,23 @@
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 50; }
   .toast.show { opacity: 1; }
   .toast.err { background: var(--closed); color: #fff; }
+  /* Phone access, in Settings */
+  .addr { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+  .addr .k { color: var(--muted); font-size: 12.5px; }
+  .addr code { font-size: 14px; overflow-wrap: anywhere; }
+  .addr .btn { justify-self: end; }
+  .ts-warn { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--waiting) 16%, var(--surface)); font-size: 13px; }
+  .pair { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .pair-code { font: 650 28px/1 ui-monospace, Consolas, monospace; letter-spacing: .28em; }
+  .devs { display: flex; flex-direction: column; gap: 4px; }
+  .devs .row { display: flex; align-items: center; gap: 10px; }
+  .devs .row > span:first-child { flex: 1; }
+  /* Phones: the sidebar slides in from the menu button, and terminals get the keys a phone keyboard lacks. */
+  #menuBtn { display: none; }
+  .scrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 44; }
+  .keybar { display: none; gap: 6px; padding: 6px 8px; overflow-x: auto; background: var(--surface); border-top: 1px solid var(--border); }
+  .keybar button { flex: none; min-width: 44px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font: 13px ui-monospace, Consolas, monospace; touch-action: manipulation; }
+  @media (pointer: coarse) { .keybar { display: flex; } }
   @media (max-width: 1000px) {
     .reader { grid-template-columns: 250px 1fr; }
     .ctx-main { grid-template-columns: 1fr; }
@@ -359,7 +376,11 @@
   }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
-    nav.side { display: none; }
+    #menuBtn { display: inline-flex; }
+    header { padding: 8px 12px; gap: 10px; }
+    nav.side { position: fixed; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); z-index: 45; transform: translateX(-105%); transition: transform .2s; box-shadow: 0 0 40px rgba(0,0,0,.4); }
+    body.side-open nav.side { transform: none; }
+    body.side-open .scrim { display: block; }
     .wrap { padding: 16px; }
     .grid { grid-template-columns: 1fr; }
     .search { width: 100%; }
@@ -371,6 +392,7 @@
 </head>
 <body>
 <header>
+  <button class="icon-btn" id="menuBtn" data-act="side-toggle" aria-label="Menu"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></button>
   <img src="/icon.svg" alt="">
   <h1>Claude Sessions</h1>
   <div class="chips" id="chips"></div>
@@ -479,10 +501,22 @@
       </div>
       <div class="host-warn" id="hostWarn" hidden></div>
       <div id="termStack"></div>
+      <div class="keybar" id="keybar" aria-label="Keys">
+        <button type="button" data-key="esc">Esc</button>
+        <button type="button" data-key="tab">Tab</button>
+        <button type="button" data-key="stab" title="Shift+Tab">⇧Tab</button>
+        <button type="button" data-key="up" aria-label="Up">↑</button>
+        <button type="button" data-key="down" aria-label="Down">↓</button>
+        <button type="button" data-key="left" aria-label="Left">←</button>
+        <button type="button" data-key="right" aria-label="Right">→</button>
+        <button type="button" data-key="enter">Enter</button>
+        <button type="button" data-key="ctrlc">Ctrl+C</button>
+      </div>
       <div class="ended-bar" id="endedBar" hidden></div>
     </section>
   </main>
 </div>
+<div class="scrim" data-act="side-close"></div>
 
 <div class="menu-pop" id="pmenu" hidden></div>
 
@@ -530,6 +564,13 @@
       <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
       <label class="switch"><input type="checkbox" id="optStartup"> <span id="optStartupLabel">Start with Windows</span></label>
       <p class="note">Installing restarts only the dashboard. Sessions in the app keep running.</p>
+    </section>
+
+    <section class="set-sec" id="remoteSec">
+      <h4>Phone access</h4>
+      <label class="switch"><input type="checkbox" id="optRemote"> Use this app from my phone over Tailscale</label>
+      <div id="remoteBody"></div>
+      <p class="note">Only devices on your Tailscale network can reach it, and each one has to be paired here once with a code. Nothing is opened to your home network or the internet. Your phone needs the Tailscale app, signed in to the same account.</p>
     </section>
 
     <section class="set-sec">
@@ -1363,7 +1404,91 @@ function openSettings() {
   renderUpdates();
   renderSettings();
   if (!$('#setDlg').open) $('#setDlg').showModal();
+  if (!ON_PHONE) loadRemote();
 }
+
+// ---- phone access ------------------------------------------------------------------
+// Opened from a tailnet address, this page is the phone: it never sees the pairing controls.
+const ON_PHONE = !['127.0.0.1', 'localhost'].includes(location.hostname);
+let R = null;
+let remoteTimer = null;
+
+async function loadRemote() {
+  clearTimeout(remoteTimer);
+  try { R = await api('/api/remote'); } catch (e) { R = { failed: e.message }; }
+  renderRemote();
+  // While Settings is open: follow the code's countdown and see a phone finish pairing.
+  if ($('#setDlg').open) remoteTimer = setTimeout(loadRemote, 3000);
+}
+
+async function remoteCall(path, body, okMsg) {
+  try {
+    R = await api(path, body);
+    if (okMsg) toast(okMsg);
+  } catch (e) { toast(e.message, true); }
+  renderRemote();
+}
+
+function ago(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 2 ? 'just now' : m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+}
+
+function renderRemote() {
+  const body = $('#remoteBody');
+  if (!R) { body.html = '<p class="note">Checking Tailscale…</p>'; return; }
+  if (R.failed) { body.html = `<div class="ts-warn">${esc(R.failed)}</div>`; return; }
+  $('#optRemote').checked = R.enabled;
+  const t = R.tailscale;
+  const copy = (v) => `<button type="button" class="btn small" data-act="copy" data-v="${esc(v)}">Copy</button>`;
+  let h = '';
+  if (!t.installed) h += '<div class="ts-warn">Tailscale is not installed on this PC. Install it from tailscale.com and sign in, then come back here.</div>';
+  else if (!t.ip) h += '<div class="ts-warn">Tailscale is not connected on this PC. Open Tailscale from the tray and sign in; the address shows up here a few seconds later.</div>';
+  if (t.ip) {
+    h += `<div class="addr">
+      <span class="k">IP</span><code>${esc(t.ip)}</code>${copy(t.ip)}
+      <span class="k">Port</span><code>${R.port}</code><span></span>
+      <span class="k">Open on phone</span><code>${esc(R.url)}</code>${copy(R.url)}
+      ${R.dnsUrl ? `<span class="k">Or by name</span><code>${esc(R.dnsUrl)}</code>${copy(R.dnsUrl)}` : ''}
+    </div>`;
+    if (!t.running) h += '<div class="ts-warn">Tailscale is not connected right now, so phones cannot reach the app until it is.</div>';
+  }
+  if (R.enabled && t.running) {
+    if (R.listening) h += `<p class="note"><b style="color:var(--ok)">●</b> Ready. Open the address above in your phone's browser.</p>`;
+    else if (R.error) h += `<div class="ts-warn">Could not listen on the Tailscale address: ${esc(R.error)}. It tries again every 30 seconds.</div>`;
+    if (R.code) {
+      const left = Math.max(0, Math.round((R.code.until - Date.now()) / 1000));
+      h += `<div class="pair"><span class="pair-code">${esc(R.code.code)}</span>
+        <span class="note">Type this on the phone. It works once and runs out in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.</span>
+        <button type="button" class="btn ghost small" data-act="remote-code">New code</button></div>`;
+    } else {
+      h += '<div class="btns" style="justify-content:flex-start"><button type="button" class="btn primary" data-act="remote-code">Pair a phone</button></div>';
+    }
+  }
+  if (R.devices.length) {
+    h += `<div class="devs"><div class="lbl">Paired devices</div>${R.devices.map((d) => `<div class="row"><span>${esc(d.name)} <span class="fine">paired ${esc(new Date(d.added).toLocaleDateString())}, last used ${ago(d.seen)}</span></span>
+      <button type="button" class="btn ghost small danger" data-act="remote-forget" data-v="${esc(d.id)}">Remove</button></div>`).join('')}
+      ${R.devices.length > 1 ? '<div class="row"><span></span><button type="button" class="btn ghost small danger" data-act="remote-forget" data-v="all">Remove all</button></div>' : ''}</div>`;
+  }
+  body.html = h;
+}
+
+if (ON_PHONE) $('#remoteSec').hidden = true;
+$('#setDlg').addEventListener('close', () => clearTimeout(remoteTimer));
+$('#optRemote').addEventListener('change', (e) => remoteCall('/api/remote', { enabled: e.target.checked }, e.target.checked ? 'Phone access is on' : 'Phone access is off'));
+
+// Keys a phone keyboard does not have. Pressing one must not take focus from the terminal,
+// or the phone keyboard would close.
+const KEYS = { esc: '\x1b', tab: '\t', stab: '\x1b[Z', enter: '\r', ctrlc: '\x03', up: 'A', down: 'B', right: 'C', left: 'D' };
+$('#keybar').addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+$('#keybar').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-key]');
+  const t = current && terms.get(current);
+  if (!b || !t) return;
+  let seq = KEYS[b.dataset.key];
+  if (seq.length === 1 && /[A-D]/.test(seq)) seq = (t.term.modes.applicationCursorKeysMode ? '\x1bO' : '\x1b[') + seq;
+  sendInput(current, seq);
+});
 
 async function checkUpdates(announce) {
   if (S.update && S.update.busy) return;
@@ -1830,7 +1955,16 @@ document.addEventListener('click', async (e) => {
   if (!e.target.closest('#pmenu') && !(b && b.dataset.act === 'pmenu')) closePmenu();
   if (!b) return;
   const id = b.dataset.id;
+  // On a phone the sidebar is a drawer: picking anything in it closes it.
+  if (b.closest('nav.side') && b.dataset.act !== 'pmenu') document.body.classList.remove('side-open');
   switch (b.dataset.act) {
+    case 'side-toggle': document.body.classList.toggle('side-open'); break;
+    case 'side-close': document.body.classList.remove('side-open'); break;
+    case 'remote-code': await remoteCall('/api/remote/code', {}); break;
+    case 'remote-forget': await remoteCall('/api/remote/forget', { id: b.dataset.v }, 'Removed; it needs a new code to come back'); break;
+    case 'copy':
+      navigator.clipboard.writeText(b.dataset.v).then(() => toast('Copied'), () => toast('Copy failed', true));
+      break;
     case 'go': go(b.dataset.view, b.dataset.arg); break;
     case 'open': show(b.dataset.tid); break;
     case 'focus': b.disabled = true; await act('/api/focus', { sessionId: id }); b.disabled = false; break;
