@@ -91,6 +91,11 @@
   .side-scroll { flex: 1; overflow-y: auto; padding: 10px 8px 16px; }
   .side-foot { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border); }
   .side-foot .nav-item { flex: 1; min-width: 0; }
+  /* + New session sits above Settings and opens upward, out over the page. */
+  .side-new { padding: 10px 8px 4px; border-top: 1px solid var(--border); }
+  .side-new > summary { display: block; text-align: center; }
+  .side-new .menu-pop { left: 8px; right: auto; top: auto; bottom: calc(100% - 4px); }
+  .side-new + .side-foot { border-top: 0; }
   .side-foot .ver { color: var(--faint); font-size: 11.5px; padding-right: 6px; }
   .icon-btn { position: relative; flex: none; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--muted); padding: 0; }
   .icon-btn:hover { background: var(--surface-2); color: var(--text); }
@@ -371,12 +376,6 @@
   <div class="chips" id="chips"></div>
   <div class="spacer"></div>
   <div class="meters" id="meters"></div>
-  <details class="menu" id="newMenu">
-    <summary class="btn primary">+ New session</summary>
-    <div class="menu-pop">
-      <div id="folders"></div>
-    </div>
-  </details>
 </header>
 
 <div class="layout">
@@ -396,6 +395,12 @@
     <div class="side-h">In Windows Terminal</div>
     <div id="sideWt"></div>
    </div>
+    <details class="menu side-new" id="newMenu">
+      <summary class="btn primary">+ New session</summary>
+      <div class="menu-pop">
+        <div id="folders"></div>
+      </div>
+    </details>
     <div class="side-foot">
       <button class="nav-item view" data-act="settings" id="navSettings" title="Updates, theme and terminal colors">
         <span class="ico"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" style="vertical-align:-2px"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7 3.4 3.4"/></svg></span><span class="nt">Settings</span>
