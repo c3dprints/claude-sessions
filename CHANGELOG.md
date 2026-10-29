@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.2 (2026-10-29)
+
+- Fix: the taskbar button could fall back to a plain browser icon (and group with an old Edge pin) after the page reloaded, for example after an update or F5. Edge puts its own app ID back on a reload, so the page now asks the app to restore its own button and icon every time it loads. The launcher also waits up to 60 seconds (was 20) for a slow-starting browser window.
+
 ## 1.5.1 (2026-10-29)
 
 Use the app from your phone over Tailscale.

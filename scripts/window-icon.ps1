@@ -85,9 +85,10 @@ public static class AppWindow {
 }
 '@
 
-# The window shows up a moment after the browser starts; wait up to 20 seconds for it.
+# The window shows up a moment after the browser starts, which can take a while when
+# the browser is not running yet (right after sign-in); wait up to 60 seconds for it.
 $done = @{}
-for ($i = 0; $i -lt 40; $i++) {
+for ($i = 0; $i -lt 120; $i++) {
   foreach ($h in [AppWindow]::Find()) {
     if ($done.ContainsKey($h)) { continue }
     [AppWindow]::Apply($h, 'c3dprints.ClaudeSessions', $env:CS_RELAUNCH, 'Claude Sessions', $env:CS_ICON)

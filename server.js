@@ -23,6 +23,7 @@ const { Store, projectOf } = require('./lib/store');
 const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
+const { giveWindowIcon } = require('./lib/windowicon');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
@@ -340,6 +341,7 @@ function termOf(id) {
 // ---- updates -----------------------------------------------------------------
 
 let updateBusy = false;
+let lastWindowIcon = 0;
 
 // The saved result predates any restart, so "available" is re-judged against the running version.
 function updateStatus() {
@@ -656,6 +658,17 @@ const routes = {
   },
 
   'POST /api/update/check': () => checkForUpdate(),
+
+  // The page asks on every load: Edge puts its own taskbar app ID back on a reload,
+  // which drops the window under a plain browser icon.
+  'POST /api/window-icon': () => {
+    if (TEST_MODE || !platform.WIN) return { ok: true, skipped: true };
+    if (Date.now() - lastWindowIcon > 3000) {
+      lastWindowIcon = Date.now();
+      giveWindowIcon(APP_DIR);
+    }
+    return { ok: true };
+  },
 
   'POST /api/update/install': async () => {
     const u = updateStatus();

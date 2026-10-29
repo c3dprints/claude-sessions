@@ -2132,6 +2132,8 @@ function route() {
 
 connectStream();
 refresh().then(route);
+// Keeps the app's own taskbar button and icon after a reload (Edge resets them).
+if (!ON_PHONE) setTimeout(() => api('/api/window-icon', {}).catch(() => {}), 1500);
 setInterval(refresh, 3000);
 // The context view reads transcripts, so it refreshes less often and only while on screen.
 setInterval(() => { if (view === 'context' && !document.hidden) loadContext(); }, 10000);
