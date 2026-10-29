@@ -1,6 +1,6 @@
 {
   "name": "claude-sessions",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Local app for every Claude Code session: built-in terminals, live status, one-click reopen.",
   "main": "server.js",
   "private": true,
@@ -9,5 +9,7 @@
     "test": "node tests/run-all.js",
     "release": "node scripts/release.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

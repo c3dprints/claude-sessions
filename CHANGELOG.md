@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.4 (2026-10-29)
+
+A paired phone stays paired.
+
+- Opening the app on the phone from a link in another app (a message, a note, a chat) showed the pairing page again, although the phone was still paired. The phone's cookie is now SameSite=Lax instead of Strict, so the browser sends it on those visits too. Changes still need a same-origin request with the app's header, so this opens nothing to other sites.
+- If the pairing page shows up anyway, it checks in the background and goes straight into the app when the phone is paired after all. Phones paired on an older version switch to the new cookie on their next visit, no pairing needed.
+- Each visit renews the cookie for another year.
+- Opening the PC by its tailnet name (like http://pc:8930) now goes to the tailnet address. Browsers keep a separate cookie for each address, so the name used to ask for pairing again.
+
 ## 1.5.3 (2026-10-29)
 
 Install the app on your phone.

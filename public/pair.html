@@ -42,6 +42,9 @@
 const f = document.getElementById('f');
 const btn = document.getElementById('go');
 const err = document.getElementById('err');
+// Opened from a link in another app, the browser may have held the cookie back
+// on the page load only. If this phone is paired after all, go straight in.
+fetch('/api/ping').then((r) => { if (r.ok) location.replace('/'); }).catch(() => {});
 f.addEventListener('submit', async (e) => {
   e.preventDefault();
   btn.disabled = true;

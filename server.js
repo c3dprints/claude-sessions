@@ -867,6 +867,13 @@ function remoteGuard(req, served) {
   return null;
 }
 
+// Lax, not Strict: Chrome leaves Strict cookies off when the page is opened from
+// a link in another app, which made paired phones look unpaired. Changes still
+// need a same-origin POST with the app's header, so Lax opens nothing new.
+function setDeviceCookie(res, token) {
+  res.setHeader('Set-Cookie', `${remoteLib.COOKIE}=${token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`);
+}
+
 const pairTries = [];
 async function pairDevice(req, res) {
   const now = Date.now();
@@ -877,7 +884,7 @@ async function pairDevice(req, res) {
     const b = await readBody(req);
     const token = remote.pair(b.code, req.headers['user-agent']);
     log(`paired ${remoteLib.deviceName(req.headers['user-agent'])} from ${req.headers['x-forwarded-for'] || req.socket.remoteAddress}`);
-    res.setHeader('Set-Cookie', `${remoteLib.COOKIE}=${token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict`);
+    setDeviceCookie(res, token);
     send(res, 200, { ok: true });
   } catch (e) {
     send(res, Number.isInteger(e.code) ? e.code : 500, { error: e.message });
@@ -909,6 +916,12 @@ async function handle(req, res, isRemote = false) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (isRemote) {
+    // Cookies belong to one address, so send the tailnet name to the IP the phone paired on.
+    const host = String(req.headers.host || '').toLowerCase();
+    if (!served && req.method === 'GET' && url.pathname === '/' && remoteBound && host !== `${remoteBound}:${PORT}`) {
+      res.writeHead(302, { Location: `http://${remoteBound}:${PORT}/` });
+      return res.end();
+    }
     if (!remote.check(req.headers.cookie)) {
       // Not paired: only the pairing page, its icon and the pairing call.
       if (req.method === 'GET' && url.pathname === '/') return send(res, 200, fs.readFileSync(path.join(APP_DIR, 'public', 'pair.html')), 'text/html; charset=utf-8');
@@ -916,6 +929,9 @@ async function handle(req, res, isRemote = false) {
       if (!(req.method === 'GET' && PUBLIC_FILES.has(url.pathname))) return send(res, 401, { error: 'pair this phone first' });
     } else if (url.pathname.startsWith('/api/remote')) {
       return send(res, 403, { error: 'phone access is managed on the PC' });
+    } else if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/ping')) {
+      // Renew the year and move older Strict cookies to Lax.
+      setDeviceCookie(res, remoteLib.cookieToken(req.headers.cookie));
     }
   }
 

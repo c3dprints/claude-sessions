@@ -663,9 +663,14 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       const ok = await R('POST', '/api/remote/pair', { body: { code }, headers: { ...H, 'User-Agent': ua } });
       assert.strictEqual(ok.status, 200);
       const set = ok.headers['set-cookie'][0];
-      assert.ok(/HttpOnly/.test(set) && /SameSite=Strict/.test(set));
+      assert.ok(/HttpOnly/.test(set) && /SameSite=Lax/.test(set) && /Max-Age=31536000/.test(set), 'Lax, so opening from another app keeps the phone paired');
       const cookie = set.split(';')[0];
       assert.strictEqual((await R('POST', '/api/remote/pair', { body: { code }, headers: H })).status, 400, 'a code works once');
+      const back = await R('GET', '/', { headers: { Cookie: cookie, 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate' } });
+      assert.ok(back.status === 200 && !back.text.includes('Pair this phone'), 'a paired phone opened from a link gets the app');
+      assert.strictEqual(back.headers['set-cookie'][0].split(';')[0], cookie, 'each visit renews the same cookie');
+      const named = await R('GET', '/', { headers: { Host: `${SERVE_NAME}:${PORT}`, Cookie: cookie } });
+      assert.ok(named.status === 302 && named.headers.location === `http://${REMOTE_IP}:${PORT}/`, 'the tailnet name goes to the address the phone paired on');
 
       const st = await R('GET', '/api/state', { headers: { Cookie: cookie } });
       assert.strictEqual(st.status, 200);
