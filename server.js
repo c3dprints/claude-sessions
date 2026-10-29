@@ -855,7 +855,11 @@ const routes = {
     const file = path.join(IMAGE_DIR, `${stamp}-${crypto.randomBytes(3).toString('hex')}.${ext}`);
     fs.writeFileSync(file, buf);
     const text = (/\s/.test(file) ? `"${file}"` : file) + ' ';
-    await host.request({ t: 'input', id: t.id, data: bracketed.get(t.id) ? `\x1b[200~${text}\x1b[201~` : text });
+    // Sessions outlive a server restart, which forgets their paste mode. Without the
+    // brackets Claude Code shows the path as text instead of attaching the image, and
+    // a long session's replay may no longer hold the mode, so only a known "off" skips them.
+    if (!bracketed.has(t.id)) await learnPasteMode(t.id);
+    await host.request({ t: 'input', id: t.id, data: bracketed.get(t.id) === false ? text : `\x1b[200~${text}\x1b[201~` });
     pausedTerms.delete(t.id);
     log(`image ${path.basename(file)} (${buf.length} bytes) added to terminal ${t.id}`);
     return { ok: true, path: file };

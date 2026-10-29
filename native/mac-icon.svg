@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- macOS app icon: Apple's 824 px rounded square on the 1024 grid, with room for its shadow.
+       Three session rows from the sidebar, each with a status dot and a title line. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b313d"/>
+      <stop offset="1" stop-color="#14171d"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="row" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.09"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="url(#rim)" stroke-width="4"/>
+
+  <!-- Working -->
+  <rect x="196" y="246" width="632" height="152" rx="44" fill="#d97757" fill-opacity="0.16" stroke="#d97757" stroke-opacity="0.55" stroke-width="4"/>
+  <circle cx="282" cy="322" r="34" fill="#d97757" filter="url(#glow)" opacity="0.8"/>
+  <circle cx="282" cy="322" r="30" fill="#d97757"/>
+  <rect x="350" y="300" width="380" height="44" rx="22" fill="#f3e3dc" fill-opacity="0.9"/>
+
+  <!-- Needs you -->
+  <rect x="196" y="436" width="632" height="152" rx="44" fill="url(#row)"/>
+  <circle cx="282" cy="512" r="34" fill="#5b9cf6" filter="url(#glow)" opacity="0.7"/>
+  <circle cx="282" cy="512" r="30" fill="#5b9cf6"/>
+  <rect x="350" y="490" width="300" height="44" rx="22" fill="#c9d3e3" fill-opacity="0.55"/>
+
+  <!-- Idle -->
+  <rect x="196" y="626" width="632" height="152" rx="44" fill="url(#row)"/>
+  <circle cx="282" cy="702" r="34" fill="#e8b04b" filter="url(#glow)" opacity="0.7"/>
+  <circle cx="282" cy="702" r="30" fill="#e8b04b"/>
+  <rect x="350" y="680" width="340" height="44" rx="22" fill="#c9d3e3" fill-opacity="0.55"/>
+</svg>

@@ -2118,6 +2118,13 @@ document.addEventListener('drop', async (e) => {
   if (p) await act('/api/projects/assign', { sessionId: sid, projectId: p.id }, `Put in ${p.name}`);
 });
 
+// A file dropped anywhere but a terminal must not open in place of the app.
+for (const ev of ['dragover', 'drop']) {
+  window.addEventListener(ev, (e) => {
+    if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault();
+  });
+}
+
 // ---- groups: sessions side by side, which can message each other ---------------------------
 
 let gKey = null;        // what the panes on screen were built for; a change rebuilds them

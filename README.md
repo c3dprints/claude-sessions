@@ -125,7 +125,7 @@ On a Mac the Windows parts have stand-ins:
 | Start with Windows shortcut | LaunchAgent `~/Library/LaunchAgents/com.c3dprints.claude-sessions.plist` |
 | Ctrl+C / Ctrl+V, Alt+V for images | Cmd+C / Cmd+V, Ctrl+V for images |
 
-The dashboard opens as an app window in Chrome, Edge, Brave or Chromium, or in the default browser if none is installed.
+On Windows the dashboard opens as an app window in Chrome, Edge, Brave or Chromium, or in the default browser if none is installed. On a Mac, Claude Sessions.app is its own native window (`native/mac-app.swift`, built with `swiftc` from the Xcode command line tools).
 
 ## Updates
 

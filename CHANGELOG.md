@@ -2,6 +2,14 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.19 (2026-11-05)
+
+- **Claude Sessions.app** is now a native macOS window (`native/mac-app.swift`, built with swiftc) instead of a Chrome app window, so it has its own Dock icon and no longer leaves Chrome processes behind. Closing the window quits the app; the server and sessions keep running. It has the usual menus, so Cmd+C, Cmd+V, Cmd+R (reload) and Cmd+Q work.
+- **+ Image** and **Add image…** open the file picker in the Mac window.
+- A file dropped outside a terminal no longer opens in place of the app.
+- An image added to a session that was already running when the app restarted now attaches, instead of showing as a path in the prompt.
+- A Mac app icon (`native/mac-icon.svg`): three session rows with their status dots, sized and shadowed like other macOS icons. It is rendered with AppKit so its corners stay transparent (the 1.5.0 icon was flattened onto a white square).
+
 ## 1.5.18 (2026-11-04)
 
 - **Pinning to the taskbar shows the app's icon** (Windows): the app now keeps a **Claude Sessions** shortcut in the Start menu carrying the window's app ID, so Windows takes the taskbar button's icon, and what pinning it makes, from that shortcut instead of from Edge or Chrome. It is made or fixed each time the app window opens. A pin made before this (it shows the Edge icon, often named "Microsoft Edge (2)") has to be unpinned once; then pin the app's own button, or right-click **Claude Sessions** in the Start menu and pick **Pin to taskbar**.
