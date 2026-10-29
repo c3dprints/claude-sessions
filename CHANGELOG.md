@@ -2,6 +2,14 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.3 (2026-10-29)
+
+Install the app on your phone.
+
+- The app can now be added to a phone's home screen with its own icon and opens full screen, without the browser bar (app manifest, phone icons, a small service worker that caches nothing).
+- **Set up HTTPS** in Settings, Phone access: phones only offer **Install app** over HTTPS, so this turns on Tailscale Serve, which gives the PC an https://<name>.<tailnet>.ts.net address with a real certificate, visible only on your tailnet. If HTTPS certificates are off for your tailnet, Settings says where to switch them on. Phones on that address still have to pair, exactly like on the plain address; requests through it never get the trust a request from the PC itself gets.
+- Over the plain http address, **Add to Home screen** still makes a shortcut (it opens in the browser).
+
 ## 1.5.2 (2026-10-29)
 
 - Fix: the taskbar button could fall back to a plain browser icon (and group with an old Edge pin) after the page reloaded, for example after an update or F5. Edge puts its own app ID back on a reload, so the page now asks the app to restore its own button and icon every time it loads. The launcher also waits up to 60 seconds (was 20) for a slow-starting browser window.

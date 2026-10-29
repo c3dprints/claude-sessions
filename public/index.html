@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Sessions</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#171a21">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sessions">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/vendor/xterm.css">
 <style>
   :root {
@@ -1412,6 +1419,7 @@ function openSettings() {
 const ON_PHONE = !['127.0.0.1', 'localhost'].includes(location.hostname);
 let R = null;
 let remoteTimer = null;
+let httpsHelp = null;  // where to switch on HTTPS certificates, after a setup that could not finish
 
 async function loadRemote() {
   clearTimeout(remoteTimer);
@@ -1456,6 +1464,18 @@ function renderRemote() {
   if (R.enabled && t.running) {
     if (R.listening) h += `<p class="note"><b style="color:var(--ok)">●</b> Ready. Open the address above in your phone's browser.</p>`;
     else if (R.error) h += `<div class="ts-warn">Could not listen on the Tailscale address: ${esc(R.error)}. It tries again every 30 seconds.</div>`;
+    const hs = R.https || {};
+    if (hs.on) {
+      h += `<div class="addr"><span class="k">Install from</span><code>${esc(hs.url)}</code>${copy(hs.url)}</div>
+        <p class="note">To install it as an app: open this HTTPS address on the phone, pair if asked, then in Chrome tap ⋮ and <b>Install app</b> (Samsung Internet: ☰, <b>Add page to</b>, <b>Home screen</b>; iPhone Safari: Share, <b>Add to Home Screen</b>). It opens full screen with its own icon.
+        <button type="button" class="btn ghost small" data-act="remote-https" data-v="off">Turn off HTTPS</button></p>`;
+    } else {
+      h += `<div class="set-row"><button type="button" class="btn" data-act="remote-https" data-v="on">Set up HTTPS to install as an app</button>
+        <span class="note">Phones only offer to install over HTTPS. Over plain http, Add to Home screen makes a shortcut that opens in the browser.</span></div>`;
+      if (httpsHelp) {
+        h += `<div class="ts-warn">HTTPS certificates are off for your tailnet. Open <a href="${esc(httpsHelp)}" target="_blank" rel="noopener">${esc(httpsHelp)}</a>, sign in, and under <b>HTTPS Certificates</b> click <b>Enable HTTPS</b>. Then press <b>Set up HTTPS</b> again. (Tailscale notes that this puts the PC's tailnet name, ${esc(t.dns || '')}, in public certificate logs; nothing on it becomes reachable from the internet.)</div>`;
+      }
+    }
     if (R.code) {
       const left = Math.max(0, Math.round((R.code.until - Date.now()) / 1000));
       h += `<div class="pair"><span class="pair-code">${esc(R.code.code)}</span>
@@ -1474,6 +1494,9 @@ function renderRemote() {
 }
 
 if (ON_PHONE) $('#remoteSec').hidden = true;
+// On the phone's HTTPS address this is what lets Chrome offer "Install app". Plain http
+// cannot run it, and there "Add to Home screen" still makes a shortcut.
+if (ON_PHONE && window.isSecureContext && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 $('#setDlg').addEventListener('close', () => clearTimeout(remoteTimer));
 $('#optRemote').addEventListener('change', (e) => remoteCall('/api/remote', { enabled: e.target.checked }, e.target.checked ? 'Phone access is on' : 'Phone access is off'));
 
@@ -1961,6 +1984,16 @@ document.addEventListener('click', async (e) => {
     case 'side-toggle': document.body.classList.toggle('side-open'); break;
     case 'side-close': document.body.classList.remove('side-open'); break;
     case 'remote-code': await remoteCall('/api/remote/code', {}); break;
+    case 'remote-https': {
+      const on = b.dataset.v === 'on';
+      b.disabled = true;
+      if (on) toast('Setting up HTTPS…');
+      await remoteCall('/api/remote/https', { on });
+      httpsHelp = on && R && R.https && !R.https.on ? R.https.enableUrl : null;
+      if (on && R && R.https && R.https.on) toast('HTTPS is ready');
+      renderRemote();
+      break;
+    }
     case 'remote-forget': await remoteCall('/api/remote/forget', { id: b.dataset.v }, 'Removed; it needs a new code to come back'); break;
     case 'copy':
       navigator.clipboard.writeText(b.dataset.v).then(() => toast('Copied'), () => toast('Copy failed', true));

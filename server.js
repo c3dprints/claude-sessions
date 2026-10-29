@@ -691,6 +691,27 @@ const routes = {
     return remoteInfo();
   },
 
+  'POST /api/remote/https': async (b) => {
+    if (typeof b.on !== 'boolean') throw fail(400, 'on must be true or false');
+    if (b.on && !store.state.settings.remote) throw fail(400, 'turn on phone access first');
+    if (TEST_MODE) return remoteInfo();
+    const t = await tailscale(0);
+    if (!t.running || !t.dns) throw fail(400, 'Tailscale is not connected on this PC');
+    const r = b.on
+      ? await tsCli(['serve', '--bg', '--yes', '--https=443', `http://127.0.0.1:${PORT}`], 20000)
+      : await tsCli(['serve', '--https=443', 'off'], 10000);
+    httpsCache.at = 0;
+    const info = await remoteInfo();
+    log(`phone HTTPS ${b.on ? 'on' : 'off'} requested: ${info.https.on ? 'on' : 'off'}${r.ok ? '' : ` (${r.out.trim().slice(0, 200)})`}`);
+    if (b.on && !info.https.on) {
+      // Most often the tailnet has HTTPS certificates switched off; Tailscale prints where to switch them on.
+      const link = (r.out.match(/https:\/\/login\.tailscale\.com\/\S+/) || [])[0] || null;
+      info.https.enableUrl = link || 'https://login.tailscale.com/admin/dns';
+      info.https.message = r.out.trim().slice(0, 300);
+    }
+    return info;
+  },
+
   'POST /api/remote/code': () => {
     if (!store.state.settings.remote) throw fail(400, 'turn on phone access first');
     remote.newCode();
@@ -718,7 +739,7 @@ let remoteSyncing = false;
 async function tailscale(maxAgeMs = 10000) {
   if (Date.now() - ts.at < maxAgeMs) return ts;
   const t = REMOTE_IP_OVERRIDE
-    ? { installed: true, running: true, ip: REMOTE_IP_OVERRIDE, dns: null }
+    ? { installed: true, running: true, ip: REMOTE_IP_OVERRIDE, dns: process.env.CS_REMOTE_DNS || null }
     : await remoteLib.tailscaleStatus();
   ts = { ...t, at: Date.now() };
   return ts;
@@ -768,9 +789,36 @@ async function syncRemote() {
   }
 }
 
+// HTTPS for phones goes through Tailscale Serve (https://<pc>.<tailnet>.ts.net, a real
+// certificate), which a phone needs before it offers to install the app. Only turned
+// on or off from Settings on the PC.
+function tsCli(args, ms) {
+  return new Promise((resolve) => {
+    execFile(remoteLib.tailscaleExe(), args, { timeout: ms, windowsHide: true }, (err, out, errOut) => {
+      resolve({ ok: !err, out: `${out || ''}${errOut || ''}` });
+    });
+  });
+}
+
+let httpsCache = { at: 0, value: { on: false, url: null } };
+async function httpsState(t) {
+  if (REMOTE_IP_OVERRIDE || !t.dns || !t.running) return { on: false, url: null };
+  if (Date.now() - httpsCache.at < 10000) return httpsCache.value;
+  const r = await tsCli(['serve', 'status', '--json'], 6000);
+  let on = false;
+  try {
+    const web = (JSON.parse(r.out || '{}').Web || {})[`${t.dns}:443`];
+    const h = web && web.Handlers && web.Handlers['/'];
+    on = !!h && h.Proxy === `http://127.0.0.1:${PORT}`;
+  } catch { /* no serve config */ }
+  httpsCache = { at: Date.now(), value: { on, url: on ? `https://${t.dns}` : null } };
+  return httpsCache.value;
+}
+
 async function remoteInfo() {
   const t = await tailscale();
   return {
+    https: await httpsState(t),
     enabled: !!store.state.settings.remote,
     port: PORT,
     tailscale: { installed: t.installed, running: t.running, ip: t.ip, dns: t.dns },
@@ -783,17 +831,38 @@ async function remoteInfo() {
   };
 }
 
-// The tailnet listener: the request must come from a tailnet address, name this PC's
-// tailnet address or MagicDNS name, and stay same-origin.
-function remoteGuard(req) {
-  if (!REMOTE_IP_OVERRIDE && !remoteLib.isTailnetPeer(req.socket.remoteAddress)) return 'not on your tailnet';
-  const h = String(req.headers.host || '').toLowerCase();
-  const names = [remoteBound, ts.dns, ts.dns && ts.dns.split('.')[0]].filter(Boolean).map((n) => `${n}:${PORT}`);
-  if (!names.includes(h)) return 'bad host';
+// Tailscale Serve (the HTTPS address phones can install from) hands requests to
+// 127.0.0.1 with this PC's tailnet name as Host and the phone's address in
+// X-Forwarded-For. Those are phone requests: they get the tailnet rules and pairing,
+// never the trust a request from this PC gets.
+function servedHost(req) {
+  return String(req.headers.host || '').toLowerCase().replace(/:443$/, '');
+}
+function viaServe(req) {
+  return !!ts.dns && servedHost(req) === ts.dns && req.headers['x-forwarded-for'] !== undefined;
+}
+
+// Phone requests: they must come from a tailnet address, name this PC's tailnet
+// address or MagicDNS name, and stay same-origin.
+function remoteGuard(req, served) {
+  let h, origin;
+  if (served) {
+    if (!store.state.settings.remote) return 'phone access is off';
+    const peer = String(req.headers['x-forwarded-for']).split(',').pop().trim();
+    if (!remoteLib.isTailnetPeer(peer)) return 'not on your tailnet';
+    h = servedHost(req);
+    origin = `https://${h}`;
+  } else {
+    if (!REMOTE_IP_OVERRIDE && !remoteLib.isTailnetPeer(req.socket.remoteAddress)) return 'not on your tailnet';
+    h = String(req.headers.host || '').toLowerCase();
+    const names = [remoteBound, ts.dns, ts.dns && ts.dns.split('.')[0]].filter(Boolean).map((n) => `${n}:${PORT}`);
+    if (!names.includes(h)) return 'bad host';
+    origin = `http://${h}`;
+  }
   const site = req.headers['sec-fetch-site'];
   if (req.url.startsWith('/api/') && site && site !== 'same-origin' && site !== 'none') return 'cross-site request';
   const o = req.headers.origin;
-  if (o && o.toLowerCase() !== `http://${h}`) return 'bad origin';
+  if (o && o.toLowerCase() !== origin) return 'bad origin';
   if (req.method === 'POST' && req.headers['x-claude-sessions'] !== '1') return 'missing header';
   return null;
 }
@@ -807,7 +876,7 @@ async function pairDevice(req, res) {
   try {
     const b = await readBody(req);
     const token = remote.pair(b.code, req.headers['user-agent']);
-    log(`paired ${remoteLib.deviceName(req.headers['user-agent'])} from ${req.socket.remoteAddress}`);
+    log(`paired ${remoteLib.deviceName(req.headers['user-agent'])} from ${req.headers['x-forwarded-for'] || req.socket.remoteAddress}`);
     res.setHeader('Set-Cookie', `${remoteLib.COOKIE}=${token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict`);
     send(res, 200, { ok: true });
   } catch (e) {
@@ -815,16 +884,27 @@ async function pairDevice(req, res) {
   }
 }
 
+// What a phone may load before it is paired: the pairing page's icon and what installing needs.
+const PUBLIC_FILES = new Set(['/icon.svg', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png']);
+
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/icon-192.png': ['icon-192.png', 'image/png'],
+  '/icon-512.png': ['icon-512.png', 'image/png'],
+  '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png'],
+  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
   '/vendor/xterm.js': ['vendor/xterm.js', 'text/javascript; charset=utf-8'],
   '/vendor/xterm.css': ['vendor/xterm.css', 'text/css; charset=utf-8'],
   '/vendor/addon-fit.js': ['vendor/addon-fit.js', 'text/javascript; charset=utf-8'],
 };
 
 async function handle(req, res, isRemote = false) {
-  const why = isRemote ? remoteGuard(req) : guard(req);
+  const served = !isRemote && viaServe(req);
+  if (served) isRemote = true;
+  const why = isRemote ? remoteGuard(req, served) : guard(req);
   if (why) return send(res, 403, { error: why });
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -833,7 +913,7 @@ async function handle(req, res, isRemote = false) {
       // Not paired: only the pairing page, its icon and the pairing call.
       if (req.method === 'GET' && url.pathname === '/') return send(res, 200, fs.readFileSync(path.join(APP_DIR, 'public', 'pair.html')), 'text/html; charset=utf-8');
       if (req.method === 'POST' && url.pathname === '/api/remote/pair') return pairDevice(req, res);
-      if (!(req.method === 'GET' && url.pathname === '/icon.svg')) return send(res, 401, { error: 'pair this phone first' });
+      if (!(req.method === 'GET' && PUBLIC_FILES.has(url.pathname))) return send(res, 401, { error: 'pair this phone first' });
     } else if (url.pathname.startsWith('/api/remote')) {
       return send(res, 403, { error: 'phone access is managed on the PC' });
     }

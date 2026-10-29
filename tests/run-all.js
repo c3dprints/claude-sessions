@@ -97,6 +97,8 @@ function fakeClaude() {
 
 // Stands in for the Tailscale address in the phone access tests.
 const REMOTE_IP = '127.0.0.2';
+// Stands in for the PC's tailnet name, which Tailscale Serve (HTTPS) sends as Host.
+const SERVE_NAME = 'pc.example.ts.net';
 
 function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {}) {
   return new Promise((resolve, reject) => {
@@ -444,7 +446,7 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: {
       ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
-      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), ...(WIN ? { CS_REMOTE_IP: REMOTE_IP } : {}),
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), ...(WIN ? { CS_REMOTE_IP: REMOTE_IP, CS_REMOTE_DNS: SERVE_NAME } : {}),
     },
     stdio: 'ignore', windowsHide: true,
   });
@@ -678,8 +680,26 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(info.devices[0].name, 'iPhone, Safari');
       await request(PORT, 'POST', '/api/remote/forget', { body: { id: info.devices[0].id }, headers: H });
       assert.strictEqual((await R('GET', '/api/state', { headers: { Cookie: cookie } })).status, 401, 'a removed phone is locked out');
+      // Through Tailscale Serve (HTTPS): requests reach 127.0.0.1 but are phone requests.
+      const S = (method, p, { headers = {}, ...o } = {}) => request(PORT, method, p, { ...o, headers: { Host: SERVE_NAME, 'X-Forwarded-For': '100.70.1.2', ...headers } });
+      const sPage = await S('GET', '/');
+      assert.ok(sPage.status === 200 && sPage.text.includes('Pair this phone'), 'an unpaired phone over HTTPS gets the pairing page');
+      assert.strictEqual((await S('GET', '/api/state')).status, 401, 'Serve requests never get the PC\'s trust');
+      assert.strictEqual((await S('GET', '/api/remote')).status, 401);
+      assert.strictEqual((await S('GET', '/manifest.webmanifest')).status, 200, 'installing works before pairing');
+      assert.strictEqual((await S('GET', '/api/state', { headers: { 'X-Forwarded-For': '8.8.8.8' } })).status, 403, 'only tailnet addresses');
+      const code2 = (await request(PORT, 'POST', '/api/remote/code', { body: {}, headers: H })).json.code.code;
+      assert.strictEqual((await S('POST', '/api/remote/pair', { body: { code: code2 }, headers: { ...H, Origin: 'http://evil.example' } })).status, 403);
+      const sOk = await S('POST', '/api/remote/pair', { body: { code: code2 }, headers: { ...H, Origin: `https://${SERVE_NAME}` } });
+      assert.strictEqual(sOk.status, 200);
+      const sCookie = sOk.headers['set-cookie'][0].split(';')[0];
+      assert.strictEqual((await S('GET', '/api/state', { headers: { Cookie: sCookie } })).status, 200);
+      assert.strictEqual((await S('POST', '/api/remote', { body: { enabled: false }, headers: { ...H, Cookie: sCookie } })).status, 403, 'a phone cannot change phone access');
+
       await request(PORT, 'POST', '/api/remote', { body: { enabled: false }, headers: H });
       await assert.rejects(R('GET', '/'), 'turning it off closes the listener');
+      assert.strictEqual((await S('GET', '/', { headers: { Cookie: sCookie } })).status, 403, 'HTTPS is refused too while it is off');
+      await request(PORT, 'POST', '/api/remote/forget', { body: { id: 'all' }, headers: H });
     });
 
     await check('http: context of open sessions, plan usage switch', async () => {
