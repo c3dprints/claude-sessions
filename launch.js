@@ -52,6 +52,22 @@ function openWindow() {
     ? spawn(browser, [`--app=${URL}`, '--window-size=1180,860'], { detached: true, stdio: 'ignore' })
     : spawn('cmd.exe', ['/c', 'start', '', URL], { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
+  if (browser) giveWindowIcon();
+}
+
+// The browser groups its app windows under its own taskbar icon; this gives the
+// dashboard window its own button with the app icon (scripts/window-icon.ps1).
+function giveWindowIcon() {
+  const vbs = path.join(__dirname, 'scripts', 'launch.vbs');
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'scripts', 'window-icon.ps1')], {
+    detached: true, stdio: 'ignore', windowsHide: true,
+    env: {
+      ...process.env,
+      CS_ICON: path.join(__dirname, 'public', 'icon.ico'),
+      CS_RELAUNCH: `"${path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wscript.exe')}" "${vbs}"`,
+    },
+  });
+  child.unref();
 }
 
 (async () => {

@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.3.1 (2026-10-29)
+
+- The app now has its own taskbar button with the Claude Sessions icon, instead of being grouped under the Edge or Chrome icon. Pinning that button to the taskbar opens the app the normal way.
+
 ## 1.3.0 (2026-10-29)
 
 Settings, an update button, themes and terminal colors.

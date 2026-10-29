@@ -75,4 +75,5 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `lib/updater.js` | Tag check and install |
 | `lib/startup.js` | Start with Windows shortcut |
 | `launch.js` + `scripts/launch.vbs` | One-click launcher (no console window) |
+| `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
 | `public/index.html` | The app |
