@@ -4,7 +4,8 @@
 #
 #   scripts/build-mac.sh [app folder]
 #
-# The app folder defaults to this checkout. The .app holds no app code, so the
+# The app folder defaults to this checkout; it must sit outside Documents,
+# Desktop and Downloads, which macOS keeps apps started from Finder out of. The .app holds no app code, so the
 # self-updater (git tags) keeps working on that folder. Output: dist/ and ~/Applications.
 set -euo pipefail
 
@@ -14,6 +15,11 @@ NODE="$(command -v node || true)"
 [ -n "$NODE" ] || { echo "node was not found on PATH (Node 18+ is needed)"; exit 1; }
 [ -f "$APP_DIR/launch.js" ] || { echo "no launch.js in $APP_DIR"; exit 1; }
 VERSION="$("$NODE" -p "require('$APP_DIR/package.json').version")"
+case "$APP_DIR" in
+  "$HOME/Documents"*|"$HOME/Desktop"*|"$HOME/Downloads"*)
+    echo "warning: $APP_DIR is in a folder macOS guards; started from Finder the app may hang there."
+    echo "         Use scripts/install-mac.sh, or pass a folder outside Documents, Desktop and Downloads." ;;
+esac
 
 OUT="$HERE/dist/Claude Sessions.app"
 rm -rf "$OUT"

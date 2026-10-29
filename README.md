@@ -54,7 +54,7 @@ This clones the repo to `%LOCALAPPDATA%\ClaudeSessions\app`, checks out the newe
 bash scripts/install-mac.sh
 ```
 
-Same idea: clones to `~/Library/Application Support/ClaudeSessions/app`, checks out the newest release tag and builds **Claude Sessions.app** into `~/Applications`. To run a dev checkout instead, run `scripts/build-mac.sh` inside it. Needs Node 18+ and the Xcode command line tools (`xcode-select --install`) for `cc` and `git`.
+Same idea: clones to `~/Library/Application Support/ClaudeSessions/app`, checks out the newest release tag and builds **Claude Sessions.app** into `~/Applications`. To run another checkout, pass it: `scripts/build-mac.sh <folder>`. Keep that folder out of Documents, Desktop and Downloads: macOS keeps apps started from Finder out of them, and the launcher hangs. Needs Node 18+ and the Xcode command line tools (`xcode-select --install`) for `cc` and `git`.
 
 On a Mac the Windows parts have stand-ins:
 
