@@ -1,12 +1,13 @@
 'use strict';
-// Claude Sessions: a local dashboard of every Claude Code terminal session.
-// Zero dependencies. Listens on 127.0.0.1 only; it can open terminals, so it is never exposed.
+// Claude Sessions: a local dashboard of every Claude Code terminal session,
+// with built-in terminals for sessions started from the app.
+// Zero dependencies. Listens on 127.0.0.1 only; it runs terminals, so it is never exposed.
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 const pkg = require('./package.json');
 const sessions = require('./lib/sessions');
@@ -14,6 +15,7 @@ const terminal = require('./lib/terminal');
 const updater = require('./lib/updater');
 const startup = require('./lib/startup');
 const { Store } = require('./lib/store');
+const { HostClient } = require('./lib/hostclient');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
@@ -23,12 +25,15 @@ const DATA_DIR = process.env.CS_DATA || path.join(process.env.LOCALAPPDATA || os
 const POLL_MS = 3000;
 const UPDATE_EVERY_MS = 6 * 3600000;
 const HISTORY_TTL_MS = 15000;
-// Tests pass a fixed pid list instead of asking tasklist, and switch off terminal actions.
+const MAX_BODY = 256 * 1024; // pastes into a terminal can be large
+// Tests pass a fixed pid list instead of asking tasklist, switch off Windows
+// Terminal actions, and may replace the claude command with a harmless one.
 const FAKE_PIDS = process.env.CS_FAKE_PIDS !== undefined
   ? new Set(process.env.CS_FAKE_PIDS.split(',').filter(Boolean).map(Number)) : null;
 const TEST_MODE = process.env.CS_TEST === '1';
 
 const store = new Store(DATA_DIR);
+const host = new HostClient({ dataDir: DATA_DIR, pipe: process.env.CS_HOST_PIPE });
 const LOG = path.join(DATA_DIR, 'server.log');
 
 function log(msg) {
@@ -67,8 +72,18 @@ function getHistory(excludeIds) {
   return historyCache.items;
 }
 
+// In-app terminals, joined to the Claude session running inside each (by process id).
+function appTerminals() {
+  return host.list().map((t) => {
+    const s = t.pid ? live.find((x) => x.pid === t.pid) : null;
+    return { ...t, sessionId: s ? s.sessionId : null };
+  });
+}
+
 function snapshot() {
   const nick = store.state.nicknames;
+  const terms = appTerminals();
+  const appByPid = new Map(terms.filter((t) => t.pid && !t.exited).map((t) => [t.pid, t.id]));
   const liveIds = new Set(live.map((s) => s.sessionId));
   const closed = store.state.closed.filter((c) => !liveIds.has(c.sessionId));
   const closedIds = new Set(closed.map((c) => c.sessionId));
@@ -81,13 +96,120 @@ function snapshot() {
   return {
     app: { name: 'Claude Sessions', version: pkg.version },
     now: Date.now(),
-    live: live.map(withNick),
+    live: live.map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null })),
     closed: closed.map(withNick),
     history: history.map(withNick),
     folders: folders.slice(0, 12),
+    terminals: { up: host.up, outdated: host.outdated, error: host.error, list: terms },
     update: { ...updateStatus(), busy: updateBusy },
     settings: { autoUpdate: !!store.state.settings.autoUpdate, startWithWindows: startup.isEnabled() },
   };
+}
+
+// ---- terminals ---------------------------------------------------------------
+
+let claudeExePath = null;
+
+function claudeExe() {
+  if (claudeExePath && fs.existsSync(claudeExePath)) return claudeExePath;
+  const dirs = [path.join(os.homedir(), '.local', 'bin'), ...String(process.env.PATH || '').split(';')];
+  claudeExePath = dirs.filter(Boolean).map((d) => path.join(d, 'claude.exe')).find((p) => fs.existsSync(p)) || null;
+  if (!claudeExePath) throw fail(500, 'claude.exe was not found (looked in ~/.local/bin and PATH)');
+  return claudeExePath;
+}
+
+function claudeCommand(resumeId) {
+  if (TEST_MODE && process.env.CS_CLAUDE_CMD) return process.env.CS_CLAUDE_CMD;
+  return `"${claudeExe()}"` + (resumeId ? ` --resume ${resumeId}` : '');
+}
+
+function size(b) {
+  return {
+    cols: Number.isInteger(b.cols) ? b.cols : 120,
+    rows: Number.isInteger(b.rows) ? b.rows : 32,
+  };
+}
+
+async function startTerminal(cwd, resumeId, b) {
+  const dir = terminal.checkDir(cwd);
+  if (resumeId !== undefined && !sessions.UUID_RE.test(String(resumeId))) throw fail(400, 'bad session id');
+  await host.ensure();
+  const r = await host.request({ t: 'spawn', cwd: dir, command: claudeCommand(resumeId), resumeId: resumeId || null, ...size(b) });
+  log(`terminal ${r.session.id} started in ${dir}${resumeId ? ' resuming ' + resumeId : ''}`);
+  return { ok: true, id: r.session.id };
+}
+
+function cwdForResume(sessionId) {
+  const closed = store.state.closed.find((c) => c.sessionId === sessionId);
+  const info = sessions.lookup(CLAUDE_DIR, sessionId);
+  const cwd = (closed && closed.cwd) || (info && info.cwd);
+  if (!cwd) throw fail(404, 'no folder recorded for that session');
+  return cwd;
+}
+
+function processGone(pid, timeoutMs) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      try { process.kill(pid, 0); } catch { return resolve(true); }
+      if (Date.now() - started > timeoutMs) return resolve(false);
+      setTimeout(tick, 200);
+    };
+    tick();
+  });
+}
+
+// One event stream per open dashboard window carries every terminal's output.
+const streams = new Set();
+
+function sse(res, msg) {
+  res.write(`data: ${JSON.stringify(msg)}\n\n`);
+}
+
+function replayAll(client) {
+  for (const t of host.list()) {
+    client.pending.add(t.id);
+    // Synchronous with the pipe: outs that arrive after this reply are not in it.
+    host.call({ t: 'replay', id: t.id }, (r) => {
+      client.pending.delete(t.id);
+      if (!client.res.writableEnded) sse(client.res, { t: 'replay', id: t.id, data: r.ok ? r.data : '' });
+    });
+  }
+}
+
+host.on('event', (msg) => {
+  for (const c of streams) {
+    if (msg.t === 'out' && c.pending.has(msg.id)) continue;
+    sse(c.res, msg);
+  }
+});
+host.on('up', () => {
+  for (const c of streams) { sse(c.res, { t: 'host', up: true }); replayAll(c); }
+});
+host.on('down', () => {
+  for (const c of streams) sse(c.res, { t: 'host', up: false });
+});
+
+function openStream(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  const client = { res, pending: new Set() };
+  streams.add(client);
+  const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+  req.on('close', () => { clearInterval(ping); streams.delete(client); });
+  sse(res, { t: 'host', up: host.up });
+  if (host.up) replayAll(client);
+  else host.ensure().catch((e) => sse(res, { t: 'host', up: false, error: e.message }));
+}
+
+function termOf(id) {
+  const t = host.list().find((x) => x.id === id);
+  if (!t) throw fail(404, 'no such terminal');
+  return t;
 }
 
 // ---- updates -----------------------------------------------------------------
@@ -132,6 +254,7 @@ async function installUpdate(tag) {
   }
 }
 
+// Only the dashboard restarts; terminals live in the session host and keep running.
 // The new process waits for the port in listen(), so it is safe to start it first.
 function restart() {
   const child = spawn(process.execPath, [path.join(APP_DIR, 'server.js')], {
@@ -147,15 +270,16 @@ const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const ALLOWED_ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 
 // Any web page can fire requests at localhost. The Host check stops DNS
-// rebinding; the custom header on POST forces a CORS preflight we never
-// answer, so other sites cannot trigger actions.
+// rebinding; Sec-Fetch-Site and Origin keep other sites off the API (opening
+// the page itself from a link is fine); the custom header on POST forces a
+// CORS preflight we never answer.
 function guard(req) {
   if (!ALLOWED_HOSTS.has(req.headers.host)) return 'bad host';
-  if (req.method === 'POST') {
-    if (req.headers['x-claude-sessions'] !== '1') return 'missing header';
-    const o = req.headers.origin;
-    if (o && !ALLOWED_ORIGINS.has(o)) return 'bad origin';
-  }
+  const site = req.headers['sec-fetch-site'];
+  if (req.url.startsWith('/api/') && site && site !== 'same-origin' && site !== 'none') return 'cross-site request';
+  const o = req.headers.origin;
+  if (o && !ALLOWED_ORIGINS.has(o)) return 'bad origin';
+  if (req.method === 'POST' && req.headers['x-claude-sessions'] !== '1') return 'missing header';
   return null;
 }
 
@@ -176,10 +300,10 @@ function readBody(req) {
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size <= 16384) chunks.push(c);
+      if (size <= MAX_BODY) chunks.push(c);
     });
     req.on('end', () => {
-      if (size > 16384) return reject(Object.assign(new Error('body too large'), { code: 413 }));
+      if (size > MAX_BODY) return reject(Object.assign(new Error('body too large'), { code: 413 }));
       if (!chunks.length) return resolve({});
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { reject(Object.assign(new Error('bad json'), { code: 400 })); }
     });
@@ -208,25 +332,74 @@ const routes = {
     return r;
   },
 
+  // Reopen a closed or past session. Default is an in-app terminal; where:'terminal' uses Windows Terminal.
   'POST /api/resume': async (b) => {
     if (!sessions.UUID_RE.test(String(b.sessionId))) throw fail(400, 'bad session id');
-    if (live.some((x) => x.sessionId === b.sessionId)) throw fail(409, 'already open, use Go to tab');
-    const closed = store.state.closed.find((c) => c.sessionId === b.sessionId);
-    const info = sessions.lookup(CLAUDE_DIR, b.sessionId);
-    const cwd = (closed && closed.cwd) || (info && info.cwd);
-    if (!cwd) throw fail(404, 'no folder recorded for that session');
-    const args = terminal.claudeTabArgs(cwd, b.sessionId); // validates before anything runs
-    if (TEST_MODE) return { ok: true, test: true, args };
-    terminal.resume(cwd, b.sessionId);
-    log(`reopened ${b.sessionId} in ${cwd}`);
-    return { ok: true };
+    if (live.some((x) => x.sessionId === b.sessionId)) throw fail(409, 'already open');
+    const cwd = cwdForResume(b.sessionId);
+    if (b.where === 'terminal') {
+      const args = terminal.claudeTabArgs(cwd, b.sessionId); // validates before anything runs
+      if (TEST_MODE) return { ok: true, test: true, args };
+      terminal.resume(cwd, b.sessionId);
+      log(`reopened ${b.sessionId} in Windows Terminal, ${cwd}`);
+      return { ok: true };
+    }
+    return startTerminal(cwd, b.sessionId, b);
   },
 
   'POST /api/new': async (b) => {
     if (!knownFolder(b.cwd)) throw fail(400, 'pick a folder from the list');
-    const args = terminal.claudeTabArgs(b.cwd);
-    if (TEST_MODE) return { ok: true, test: true, args };
-    terminal.newSession(b.cwd);
+    if (b.where === 'terminal') {
+      const args = terminal.claudeTabArgs(b.cwd);
+      if (TEST_MODE) return { ok: true, test: true, args };
+      terminal.newSession(b.cwd);
+      return { ok: true };
+    }
+    return startTerminal(b.cwd, undefined, b);
+  },
+
+  // Bring a Windows Terminal session into the app: end it there, resume it here.
+  // Only while idle, so no running work or open permission prompt is cut off.
+  'POST /api/move': async (b) => {
+    const s = live.find((x) => x.sessionId === b.sessionId);
+    if (!s) throw fail(404, 'that session is not open');
+    if (appTerminals().some((t) => t.pid === s.pid && !t.exited)) throw fail(409, 'already in the app');
+    if (s.status !== 'idle') throw fail(409, 'wait until it is idle, then move it');
+    if (!TEST_MODE) {
+      await new Promise((resolve) => execFile('taskkill', ['/PID', String(s.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
+      if (!(await processGone(s.pid, 8000))) throw fail(500, 'the session did not close in Windows Terminal');
+      live = live.filter((x) => x.pid !== s.pid);
+    }
+    log(`moving ${s.sessionId} from Windows Terminal into the app`);
+    return startTerminal(s.cwd, s.sessionId, b);
+  },
+
+  'POST /api/term/input': async (b) => {
+    const t = termOf(b.id);
+    if (typeof b.data !== 'string') throw fail(400, 'data must be text');
+    if (t.exited) throw fail(409, 'that session has ended');
+    await host.request({ t: 'input', id: t.id, data: b.data });
+    return { ok: true };
+  },
+
+  'POST /api/term/resize': async (b) => {
+    const t = termOf(b.id);
+    if (!Number.isInteger(b.cols) || !Number.isInteger(b.rows)) throw fail(400, 'cols and rows must be whole numbers');
+    await host.request({ t: 'resize', id: t.id, cols: b.cols, rows: b.rows });
+    return { ok: true };
+  },
+
+  'POST /api/term/kill': async (b) => {
+    const t = termOf(b.id);
+    await host.request({ t: 'kill', id: t.id });
+    log(`terminal ${t.id} ended from the dashboard`);
+    return { ok: true };
+  },
+
+  'POST /api/term/forget': async (b) => {
+    const t = termOf(b.id);
+    await host.request({ t: 'forget', id: t.id });
+    host.sessions.delete(t.id);
     return { ok: true };
   },
 
@@ -266,6 +439,9 @@ const routes = {
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/vendor/xterm.js': ['vendor/xterm.js', 'text/javascript; charset=utf-8'],
+  '/vendor/xterm.css': ['vendor/xterm.css', 'text/css; charset=utf-8'],
+  '/vendor/addon-fit.js': ['vendor/addon-fit.js', 'text/javascript; charset=utf-8'],
 };
 
 const server = http.createServer(async (req, res) => {
@@ -277,6 +453,7 @@ const server = http.createServer(async (req, res) => {
     const [file, type] = STATIC[url.pathname];
     try { return send(res, 200, fs.readFileSync(path.join(APP_DIR, 'public', file)), type); } catch { return send(res, 404, { error: 'missing' }); }
   }
+  if (req.method === 'GET' && url.pathname === '/api/term/stream') return openStream(req, res);
 
   const route = routes[`${req.method} ${url.pathname}`];
   if (!route) return send(res, 404, { error: 'not found' });
@@ -295,6 +472,7 @@ server.once('listening', () => {
   log(`v${pkg.version} listening on http://${HOST}:${PORT}`);
   poll();
   setInterval(poll, POLL_MS);
+  host.attach();
   if (!TEST_MODE) {
     setTimeout(checkForUpdate, 30000);
     setInterval(checkForUpdate, UPDATE_EVERY_MS);

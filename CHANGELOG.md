@@ -2,6 +2,19 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.1.0 (2026-10-28)
+
+Claude sessions can now run inside the app, so there is no need to go back to Windows Terminal.
+
+- Built-in terminals: **+ New session**, **Reopen** and the closed-session banner now open Claude inside the app. The full Claude Code interface runs in it, with colors, scrolling, copy (Ctrl+C on a selection) and paste (Ctrl+V, images via Alt+V).
+- New layout: a sidebar lists the sessions in the app and the ones in Windows Terminal with their live status; click to switch.
+- **Move here** ends an idle Windows Terminal session and continues the same conversation in the app.
+- Sessions in the app run in a separate session host, so closing the window, a crash of the dashboard, or an app update does not end them. Reopening the window shows each session's recent output.
+- **End session** (with a confirm) and an "ended" bar with **Reopen** and **Close**.
+- Reopening in Windows Terminal is still there (the **Terminal** button on closed and past sessions).
+- Security: the API now also refuses cross-site requests, so no web page can read or type into a session.
+- Fix: the 3 second refresh no longer rebuilds buttons that did not change, so a click can no longer land on a button that is being replaced.
+
 ## 1.0.2 (2026-10-28)
 
 - Fix: right after installing an update the footer still offered that same update. The saved check result is now compared with the running version.

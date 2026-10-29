@@ -15,6 +15,29 @@ const sessions = require('../lib/sessions');
 const terminal = require('../lib/terminal');
 const updater = require('../lib/updater');
 const { trackClosures, Store } = require('../lib/store');
+const { HostClient } = require('../lib/hostclient');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, ms = 8000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error('timed out waiting');
+    await sleep(100);
+  }
+}
+const strip = (s) => s.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07]*\x07/g, '');
+
+// Ends whatever a test left in a session host, then stops the host itself.
+async function stopHost(dataDir, pipe) {
+  const c = new HostClient({ dataDir, pipe });
+  await c.attach();
+  if (!c.up) return;
+  for (const s of c.list()) if (!s.exited) await c.request({ t: 'kill', id: s.id }).catch(() => {});
+  await until(() => c.list().every((s) => s.exited), 10000).catch(() => {});
+  await c.request({ t: 'shutdown' }).catch(() => {});
+}
 
 let passed = 0;
 const failures = [];
@@ -184,9 +207,56 @@ function request(port, method, p, { body, headers = {} } = {}) {
     assert.strictEqual(top[1], v);
   });
 
+  // ---- session host + ConPTY bridge ----------------------------------------
+  const hostRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-host-'));
+  const hostData = path.join(hostRoot, 'data');
+  const hostPipe = `\\\\.\\pipe\\cs-test-host-${process.pid}`;
+  const hc = new HostClient({ dataDir: hostData, pipe: hostPipe });
+  try {
+    await check('host: starts, runs a command in a pseudo console, takes typing', async () => {
+      await hc.ensure();
+      let out = '';
+      hc.on('event', (m) => { if (m.t === 'out') out += Buffer.from(m.data, 'base64').toString('utf8'); });
+      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: 'cmd.exe /q /k echo HOST-READY', cols: 100, rows: 30 });
+      const id = r.session.id;
+      await until(() => strip(out).includes('HOST-READY'));
+      await until(() => hc.list().find((s) => s.id === id).pid > 0);
+      await hc.request({ t: 'input', id, data: 'echo typed-%COMPUTERNAME%\r' });
+      await until(() => /typed-\w+/.test(strip(out)));
+      await hc.request({ t: 'resize', id, cols: 140, rows: 40 });
+      const rep = await hc.request({ t: 'replay', id });
+      assert.ok(strip(Buffer.from(rep.data, 'base64').toString('utf8')).includes('HOST-READY'), 'replay holds earlier output');
+      await hc.request({ t: 'kill', id });
+      await until(() => hc.list().find((s) => s.id === id).exited, 10000);
+    });
+
+    await check('host: a second dashboard connection sees the running sessions (survives restarts)', async () => {
+      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: 'cmd.exe /q /k echo AGAIN', cols: 80, rows: 24 });
+      const other = new HostClient({ dataDir: hostData, pipe: hostPipe });
+      await other.attach();
+      assert.ok(other.up);
+      assert.ok(other.list().some((s) => s.id === r.session.id && !s.exited));
+      other.sock.destroy();
+    });
+
+    await check('host: refuses shutdown while a session runs', async () => {
+      await assert.rejects(hc.request({ t: 'shutdown' }), /still running/);
+    });
+
+    await check('host: wrong token is refused', async () => {
+      const bad = new HostClient({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'cs-bad-')), pipe: hostPipe });
+      await assert.rejects(bad._connect(), /refused/);
+    });
+  } finally {
+    if (hc.sock) hc.sock.destroy();
+    await stopHost(hostData, hostPipe);
+  }
+
   // ---- HTTP contract -------------------------------------------------------
   const PORT = 8931;
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-data-'));
+  const data = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-data-')), 'data');
+  fs.mkdirSync(data);
+  const httpPipe = `\\\\.\\pipe\\cs-test-http-${process.pid}`;
   // What a server leaves behind right before it installs v0.0.1 and restarts.
   fs.writeFileSync(path.join(data, 'state.json'), JSON.stringify({ update: { current: '0.0.0', latest: 'v0.0.1', available: true, mode: 'release' } }));
   // Hold the port briefly, like an old server mid-restart, so the server has to retry.
@@ -194,7 +264,10 @@ function request(port, method, p, { body, headers = {} } = {}) {
   await new Promise((r) => blocker.listen(PORT, '127.0.0.1', r));
   setTimeout(() => blocker.close(), 700);
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
-    env: { ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1' },
+    env: {
+      ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: 'cmd.exe /q /k echo APP-READY',
+    },
     stdio: 'ignore', windowsHide: true,
   });
   try {
@@ -271,9 +344,14 @@ function request(port, method, p, { body, headers = {} } = {}) {
       }
       assert.deepStrictEqual(s.closed.map((c) => c.sessionId), [ID2]);
       assert.ok(!s.history.some((h) => h.sessionId === ID2), 'closed sessions are not repeated in history');
-      const r = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID2 }, headers: H });
-      assert.strictEqual(r.status, 200);
-      assert.strictEqual(r.json.args[r.json.args.length - 1], `claude --resume ${ID2}`);
+      const wt = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID2, where: 'terminal' }, headers: H });
+      assert.strictEqual(wt.status, 200);
+      assert.strictEqual(wt.json.args[wt.json.args.length - 1], `claude --resume ${ID2}`);
+      const inApp = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID2 }, headers: H });
+      assert.strictEqual(inApp.status, 200, JSON.stringify(inApp.json));
+      assert.ok(inApp.json.id, 'reopening defaults to an in-app terminal');
+      const t = (await request(PORT, 'GET', '/api/state')).json.terminals.list.find((x) => x.id === inApp.json.id);
+      assert.strictEqual(t.resumeId, ID2);
     });
 
     await check('http: new session only in a known folder', async () => {
@@ -284,11 +362,75 @@ function request(port, method, p, { body, headers = {} } = {}) {
     });
 
     await check('http: oversized body is rejected', async () => {
-      const r = await request(PORT, 'POST', '/api/rename', { body: { sessionId: ID1, name: 'x'.repeat(20000) }, headers: H });
+      const r = await request(PORT, 'POST', '/api/rename', { body: { sessionId: ID1, name: 'x'.repeat(300000) }, headers: H });
       assert.strictEqual(r.status, 413);
+    });
+
+    await check('http: a cross-site request is refused even with the header', async () => {
+      const r = await request(PORT, 'GET', '/api/state', { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+      assert.strictEqual(r.status, 403);
+      const s = await request(PORT, 'GET', '/api/term/stream', { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+      assert.strictEqual(s.status, 403, 'terminal output is not readable cross-site');
+      const page = await request(PORT, 'GET', '/', { headers: { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate' } });
+      assert.strictEqual(page.status, 200, 'opening the page from a link still works');
+    });
+
+    await check('http: in-app terminal: start, stream, type, end, close', async () => {
+      let streamed = '';
+      const events = [];
+      const sreq = http.get({ host: '127.0.0.1', port: PORT, path: '/api/term/stream', headers: { Host: `127.0.0.1:${PORT}` } }, (res) => {
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (d) => {
+          buf += d;
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            const block = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (!block.startsWith('data: ')) continue;
+            const m = JSON.parse(block.slice(6));
+            events.push(m);
+            if ((m.t === 'out' || m.t === 'replay') && m.data) streamed += Buffer.from(m.data, 'base64').toString('utf8');
+          }
+        });
+      });
+      try {
+        const r = await request(PORT, 'POST', '/api/new', { body: { cwd: fx.work, cols: 100, rows: 30 }, headers: H });
+        assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+        const id = r.json.id;
+        await until(() => strip(streamed).includes('APP-READY'), 15000);
+        const typed = await request(PORT, 'POST', '/api/term/input', { body: { id, data: 'echo via-http-ok\r' }, headers: H });
+        assert.strictEqual(typed.status, 200);
+        await until(() => strip(streamed).includes('via-http-ok'));
+        assert.strictEqual((await request(PORT, 'POST', '/api/term/resize', { body: { id, cols: 90, rows: 20 }, headers: H })).status, 200);
+        const st = (await request(PORT, 'GET', '/api/state')).json;
+        assert.ok(st.terminals.up && st.terminals.list.some((t) => t.id === id && !t.exited));
+        await request(PORT, 'POST', '/api/term/kill', { body: { id }, headers: H });
+        await until(() => events.some((m) => m.t === 'exit' && m.session.id === id), 10000);
+        const late = await request(PORT, 'POST', '/api/term/input', { body: { id, data: 'x' }, headers: H });
+        assert.strictEqual(late.status, 409, 'typing into an ended session is refused');
+        await request(PORT, 'POST', '/api/term/forget', { body: { id }, headers: H });
+        const after = (await request(PORT, 'GET', '/api/state')).json;
+        assert.ok(!after.terminals.list.some((t) => t.id === id));
+      } finally {
+        sreq.destroy();
+      }
+    });
+
+    await check('http: Move here only while idle', async () => {
+      const busy = await request(PORT, 'POST', '/api/move', { body: { sessionId: ID1 }, headers: H });
+      assert.strictEqual(busy.status, 409);
+      // pid 200 is free again after the closing test; give it an idle session.
+      fs.writeFileSync(path.join(fx.dir, 'sessions', '200.json'),
+        JSON.stringify({ pid: 200, sessionId: ID3, cwd: fx.work, startedAt: 5, status: 'idle', kind: 'interactive' }));
+      await until(async () => (await request(PORT, 'GET', '/api/state')).json.live.some((s) => s.sessionId === ID3));
+      const idle = await request(PORT, 'POST', '/api/move', { body: { sessionId: ID3, cols: 80, rows: 24 }, headers: H });
+      assert.strictEqual(idle.status, 200, JSON.stringify(idle.json));
+      assert.ok(idle.json.id);
     });
   } finally {
     srv.kill();
+    await stopHost(data, httpPipe);
   }
 
   const total = passed + failures.length;

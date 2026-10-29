@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Sessions</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/xterm.css">
 <style>
   :root {
     --bg: #0f1115; --surface: #171a21; --surface-2: #1d212a; --border: #272c37;
     --text: #e8eaef; --muted: #8d95a5; --faint: #5c6473;
     --accent: #d97757; --accent-text: #fff;
     --working: #5b9cf6; --waiting: #e8b04b; --closed: #ef6b6b; --ok: #4fbf8a;
+    --term-bg: #0b0d11;
     --shadow: 0 1px 2px rgba(0,0,0,.3);
     color-scheme: dark;
   }
@@ -24,64 +26,85 @@
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
   button { font: inherit; cursor: pointer; }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 24px 40px; }
 
-  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
-  header img { width: 30px; height: 30px; }
-  header h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  header img { width: 26px; height: 26px; }
+  header h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
   .chip b { color: var(--text); font-weight: 600; }
   .spacer { flex: 1; }
 
-  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; }
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; white-space: nowrap; }
   .btn:hover { background: var(--surface-2); }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
   .btn.primary:hover { filter: brightness(1.08); }
   .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 8px; }
   .btn.ghost:hover { color: var(--text); background: var(--surface-2); }
-  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.danger { color: var(--closed); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.small { padding: 3px 8px; font-size: 12.5px; }
 
   .menu { position: relative; }
   .menu > summary { list-style: none; }
   .menu > summary::-webkit-details-marker { display: none; }
-  .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 300px; max-width: 460px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 300px; max-width: 460px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
   .menu-pop button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .menu-pop button:hover { background: var(--surface-2); }
   .menu-pop .hint { color: var(--muted); font-size: 12px; padding: 4px 10px 6px; }
 
-  .banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; border: 1px solid color-mix(in srgb, var(--closed) 45%, transparent); background: color-mix(in srgb, var(--closed) 12%, var(--surface)); }
-  .banner.offline { border-color: var(--closed); }
+  .layout { flex: 1; display: grid; grid-template-columns: 264px 1fr; min-height: 0; }
+  nav.side { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px 16px; }
+  .side-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 14px 10px 6px; }
+  .side-empty { color: var(--faint); font-size: 12.5px; padding: 2px 10px; }
+  .nav-item { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 7px 10px; border-radius: 8px; }
+  .nav-item:hover { background: var(--surface-2); }
+  .nav-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .nav-item .dot { margin-top: 6px; flex: none; }
+  .nav-item .nt { display: block; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-item .ns { display: block; font-size: 12px; color: var(--muted); }
+  .nav-item > span:last-child { min-width: 0; flex: 1; }
+  .nav-row { display: flex; align-items: center; }
+  .nav-row .nav-item { flex: 1; min-width: 0; }
+
+  main { min-width: 0; min-height: 0; position: relative; }
+  #overview { position: absolute; inset: 0; overflow-y: auto; }
+  #overview[hidden] { display: none; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 18px 24px 40px; }
+
+  .banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; margin-bottom: 8px; border: 1px solid color-mix(in srgb, var(--closed) 45%, transparent); background: color-mix(in srgb, var(--closed) 12%, var(--surface)); }
   .banner .msg { flex: 1; }
   .banner .msg b { font-weight: 600; }
 
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin: 22px 0 10px; display: flex; align-items: center; gap: 10px; }
   h2 .count { color: var(--faint); }
   h2 input { margin-left: auto; text-transform: none; letter-spacing: 0; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
   .card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px 12px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
   .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--st); }
-  .card.busy { --st: var(--working); }
-  .card.waiting { --st: var(--waiting); border-color: color-mix(in srgb, var(--waiting) 50%, var(--border)); }
-  .card.idle { --st: var(--ok); }
-  .card.other { --st: var(--faint); }
+  .busy { --st: var(--working); }
+  .waiting { --st: var(--waiting); }
+  .card.waiting { border-color: color-mix(in srgb, var(--waiting) 50%, var(--border)); }
+  .idle { --st: var(--ok); }
+  .other, .ended { --st: var(--faint); }
   .row { display: flex; align-items: center; gap: 8px; }
   .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--st); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); display: inline-block; }
   .busy .dot { animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--working) 60%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
   @media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
   .since { color: var(--faint); font-weight: 400; }
-  .tag { margin-left: auto; font: 11.5px ui-monospace, Consolas, monospace; color: var(--faint); }
+  .where { margin-left: auto; font-size: 11.5px; color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; }
   .title { font-size: 15.5px; font-weight: 600; margin: 2px 0 0; overflow-wrap: anywhere; }
   .title .orig { display: block; font-size: 12px; font-weight: 400; color: var(--faint); }
   .meta { color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   .prompt { color: var(--muted); font-size: 13px; border-left: 2px solid var(--border); padding-left: 9px; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .actions { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .actions { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
   .actions .ver { margin-left: auto; color: var(--faint); font-size: 11.5px; }
   .rename { width: 100%; font: inherit; font-size: 15px; font-weight: 600; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--accent); background: var(--surface-2); color: var(--text); }
 
@@ -106,67 +129,120 @@
   .upd { display: inline-flex; gap: 8px; align-items: center; }
   .upd.ready { color: var(--ok); font-weight: 600; }
 
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  #termView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--term-bg); }
+  #termView[hidden] { display: none; }
+  .term-bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .term-bar .tt { font-weight: 600; font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .term-bar .tm { color: var(--muted); font-size: 12.5px; }
+  #termStack { flex: 1; position: relative; min-height: 0; }
+  .term-pane { position: absolute; inset: 0; padding: 8px 4px 4px 12px; visibility: hidden; pointer-events: none; }
+  .term-pane.on { visibility: visible; pointer-events: auto; }
+  .term-pane .xterm { height: 100%; }
+  .ended-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: color-mix(in srgb, var(--closed) 14%, var(--surface)); border-top: 1px solid var(--border); }
+  .ended-bar[hidden] { display: none; }
+  .ended-bar .msg { flex: 1; }
+  .host-warn { padding: 8px 14px; background: color-mix(in srgb, var(--waiting) 16%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13px; }
+  .host-warn[hidden] { display: none; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 50; }
   .toast.show { opacity: 1; }
   .toast.err { background: var(--closed); color: #fff; }
-  @media (max-width: 640px) {
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.side { display: none; }
     .wrap { padding: 16px; }
     .grid { grid-template-columns: 1fr; }
     .search { width: 100%; }
     h2 { flex-wrap: wrap; }
-    .item { grid-template-columns: 1fr; }
-    .item .a { grid-row: auto; grid-column: 1; }
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <img src="/icon.svg" alt="">
-    <h1>Claude Sessions</h1>
-    <div class="chips" id="chips"></div>
-    <div class="spacer"></div>
-    <details class="menu" id="newMenu">
-      <summary class="btn primary">+ New session</summary>
-      <div class="menu-pop">
-        <div class="hint">Open Claude in a new Windows Terminal tab, in:</div>
-        <div id="folders"></div>
+<header>
+  <img src="/icon.svg" alt="">
+  <h1>Claude Sessions</h1>
+  <div class="chips" id="chips"></div>
+  <div class="spacer"></div>
+  <details class="menu" id="newMenu">
+    <summary class="btn primary">+ New session</summary>
+    <div class="menu-pop">
+      <div class="hint">Start Claude in this app, in:</div>
+      <div id="folders"></div>
+    </div>
+  </details>
+</header>
+
+<div class="layout">
+  <nav class="side" aria-label="Sessions">
+    <button class="nav-item" id="navOverview" data-act="overview"><span class="dot" style="background:transparent"></span><span><span class="nt">Overview</span><span class="ns">Everything at a glance</span></span></button>
+    <div class="side-h">In this app</div>
+    <div id="sideApp"></div>
+    <div class="side-h">In Windows Terminal</div>
+    <div id="sideWt"></div>
+  </nav>
+
+  <main>
+    <section id="overview">
+      <div class="wrap">
+        <div id="banner"></div>
+        <h2>Open now <span class="count" id="liveCount"></span></h2>
+        <div id="live"></div>
+
+        <div id="closedWrap" hidden>
+          <h2>Recently closed <span class="count" id="closedCount"></span></h2>
+          <div class="list" id="closed"></div>
+        </div>
+
+        <h2>History <span class="count" id="histCount"></span>
+          <input class="search" id="search" type="search" placeholder="Search titles, prompts, folders" autocomplete="off">
+        </h2>
+        <div class="list" id="history"></div>
+
+        <footer>
+          <span id="version"></span>
+          <span class="upd" id="update"></span>
+          <span class="spacer"></span>
+          <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
+          <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
+        </footer>
       </div>
-    </details>
-  </header>
+    </section>
 
-  <div id="banner"></div>
-
-  <h2>Open now <span class="count" id="liveCount"></span></h2>
-  <div id="live"></div>
-
-  <div id="closedWrap" hidden>
-    <h2>Recently closed <span class="count" id="closedCount"></span></h2>
-    <div class="list" id="closed"></div>
-  </div>
-
-  <h2>History <span class="count" id="histCount"></span>
-    <input class="search" id="search" type="search" placeholder="Search titles, prompts, folders" autocomplete="off">
-  </h2>
-  <div class="list" id="history"></div>
-
-  <footer>
-    <span id="version"></span>
-    <span class="upd" id="update"></span>
-    <span class="spacer"></span>
-    <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
-    <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
-  </footer>
+    <section id="termView" hidden>
+      <div class="term-bar">
+        <span class="status" id="tStatus"></span>
+        <span class="tt" id="tTitle"></span>
+        <span class="tm path" id="tPath"></span>
+        <span class="spacer"></span>
+        <span id="tEnd"></span>
+      </div>
+      <div class="host-warn" id="hostWarn" hidden></div>
+      <div id="termStack"></div>
+      <div class="ended-bar" id="endedBar" hidden></div>
+    </section>
+  </main>
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
+// el.html = '...' rewrites the element only when its markup changed, so the
+// 3 second refresh never swaps a button out from under a click.
+Object.defineProperty(Element.prototype, 'html', {
+  set(v) { if (this._html !== v) { this._html = v; this.innerHTML = v; } },
+});
 let S = null;
 let editing = null;   // sessionId being renamed; live cards are not redrawn while set
 let histLimit = 15;
 let offline = false;
+let current = null;   // in-app terminal id on screen, null = overview
+let hostUp = true;
+let endArmed = null;  // terminal id whose "End session" is waiting for confirmation
+let disarmTimer = null;
+const lastKnown = new Map(); // terminal id -> last Claude session seen inside it (survives its exit)
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -205,63 +281,259 @@ function toast(msg, err) {
 }
 
 function statusOf(s) {
+  if (!s) return { cls: 'other', text: 'Starting…' };
   if (s.status === 'busy') return { cls: 'busy', text: 'Working' };
   if (s.status === 'waiting') return { cls: 'waiting', text: 'Needs you' };
   if (s.status === 'idle') return { cls: 'idle', text: 'Idle' };
   return { cls: 'other', text: s.status || 'Unknown' };
 }
 
+// ---- terminals ---------------------------------------------------------------
+
+const terms = new Map(); // id -> { term, fit, el, sent: 'colsxrows' }
+
+function b64bytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function getTerm(id) {
+  let t = terms.get(id);
+  if (t) return t;
+  const el = document.createElement('div');
+  el.className = 'term-pane';
+  $('#termStack').appendChild(el);
+  const term = new Terminal({
+    fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+    fontSize: 13.5,
+    cursorBlink: true,
+    scrollback: 10000,
+    theme: { background: '#0b0d11', foreground: '#e8eaef', cursor: '#d97757', selectionBackground: '#3a4458' },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(el);
+  term.onData((d) => sendInput(id, d));
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown') return true;
+    const k = e.key.toLowerCase();
+    // Ctrl+C copies when text is selected, otherwise it goes to Claude as usual.
+    if (e.ctrlKey && k === 'c' && (e.shiftKey || term.hasSelection())) {
+      if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+      term.clearSelection();
+      return false;
+    }
+    // Ctrl+V: let the browser paste so xterm receives the text.
+    if (e.ctrlKey && k === 'v') return false;
+    return true;
+  });
+  // An image on the clipboard has no text to paste; Claude Code reads it itself on Alt+V.
+  el.addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    if (cd && !cd.getData('text') && [...cd.items].some((i) => i.kind === 'file')) {
+      e.preventDefault();
+      e.stopPropagation();
+      sendInput(id, '\x1bv');
+    }
+  }, true);
+  t = { term, fit, el, sent: '' };
+  terms.set(id, t);
+  return t;
+}
+
+const inq = new Map();
+const sending = new Set();
+function sendInput(id, d) {
+  inq.set(id, (inq.get(id) || '') + d);
+  flushInput(id);
+}
+async function flushInput(id) {
+  if (sending.has(id) || !inq.get(id)) return;
+  const all = inq.get(id);
+  const data = all.slice(0, 200000);
+  if (data.length < all.length) inq.set(id, all.slice(data.length)); else inq.delete(id);
+  sending.add(id);
+  try { await api('/api/term/input', { id, data }); }
+  catch (e) { toast(e.message, true); }
+  finally { sending.delete(id); if (inq.get(id)) flushInput(id); }
+}
+
+let resizeTimer;
+function fitCurrent() {
+  if (!current) return;
+  const t = terms.get(current);
+  if (!t) return;
+  try { t.fit.fit(); } catch { return; }
+  const key = `${t.term.cols}x${t.term.rows}`;
+  if (key === t.sent) return;
+  clearTimeout(resizeTimer);
+  const id = current;
+  resizeTimer = setTimeout(() => {
+    t.sent = key;
+    api('/api/term/resize', { id, cols: t.term.cols, rows: t.term.rows }).catch(() => {});
+  }, 120);
+}
+new ResizeObserver(fitCurrent).observe($('#termStack'));
+
+// Size for a terminal that does not exist yet: roughly what the terminal area fits.
+function proposedSize() {
+  const box = $('main').getBoundingClientRect();
+  return { cols: Math.max(40, Math.floor((box.width - 30) / 8.1)), rows: Math.max(10, Math.floor((box.height - 60) / 18)) };
+}
+
+function terminalInfo(id) {
+  const t = S && S.terminals.list.find((x) => x.id === id);
+  const s = S && S.live.find((x) => x.appId === id);
+  return { t, s };
+}
+
+function show(id) {
+  current = id;
+  if (id) history.replaceState(null, '', '#t/' + id); else history.replaceState(null, '', location.pathname);
+  $('#overview').hidden = !!id;
+  $('#termView').hidden = !id;
+  for (const [tid, t] of terms) t.el.classList.toggle('on', tid === id);
+  if (id) {
+    const t = getTerm(id);
+    t.el.classList.add('on');
+    requestAnimationFrame(() => { fitCurrent(); t.term.focus(); });
+  }
+  render();
+}
+
+function renderTermBar() {
+  if (!current || !S) return;
+  const { t, s } = terminalInfo(current);
+  if (s) lastKnown.set(current, s);
+  const known = s || lastKnown.get(current);
+  const st = t && t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
+  $('#tStatus').className = 'status ' + st.cls;
+  $('#tStatus').html = `<span class="dot"></span>${st.text}`;
+  $('#tTitle').textContent = known ? label(known) : (t && t.resumeId ? 'Reopening session…' : 'New session');
+  $('#tPath').textContent = home((t && t.cwd) || (known && known.cwd));
+  $('#tEnd').html = t && !t.exited
+    ? (endArmed === current
+      ? '<span class="tm">End this session?</span> <button class="btn small danger" data-act="kill-yes">End it</button> <button class="btn small ghost" data-act="kill-no">Keep</button>'
+      : '<button class="btn small ghost" data-act="kill">End session</button>')
+    : '';
+  const warn = $('#hostWarn');
+  warn.hidden = hostUp;
+  warn.textContent = hostUp ? '' : 'The session host is not running. Sessions started here have stopped; reopen them from Recently closed.';
+  const bar = $('#endedBar');
+  if (t && t.exited) {
+    const sid = (known && known.sessionId) || t.resumeId;
+    bar.hidden = false;
+    bar.html = `<span class="msg">This session ended${t.error ? ': ' + esc(t.error) : ''}.</span>` +
+      (sid ? `<button class="btn primary" data-act="resume" data-id="${esc(sid)}" data-replace="${esc(current)}">Reopen</button>` : '') +
+      `<button class="btn" data-act="forget" data-tid="${esc(current)}">Close</button>`;
+  } else {
+    bar.hidden = true;
+  }
+}
+
+function connectStream() {
+  const es = new EventSource('/api/term/stream');
+  es.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    switch (m.t) {
+      case 'replay': {
+        const t = getTerm(m.id);
+        t.term.reset();
+        if (m.data) t.term.write(b64bytes(m.data));
+        break;
+      }
+      case 'out': getTerm(m.id).term.write(b64bytes(m.data)); break;
+      case 'spawned': getTerm(m.session.id); refresh(); break;
+      case 'info': case 'exit': refresh(); break;
+      case 'host':
+        hostUp = m.up;
+        if (m.error) toast('Terminals unavailable: ' + m.error, true);
+        renderTermBar();
+        break;
+    }
+  };
+}
+
+// ---- rendering -----------------------------------------------------------------
+
 function renderHeader() {
   const n = (st) => S.live.filter((s) => s.status === st).length;
   const chip = (color, count, text) => `<span class="chip"><span class="dot" style="background:var(${color})"></span><b>${count}</b> ${text}</span>`;
   const waiting = n('waiting');
-  $('#chips').innerHTML =
+  $('#chips').html =
     `<span class="chip"><b>${S.live.length}</b> open</span>` +
     chip('--working', n('busy'), 'working') +
     (waiting ? chip('--waiting', waiting, 'need you') : '') +
     chip('--ok', n('idle'), 'idle');
   document.title = (waiting ? `(${waiting} need you) ` : `(${S.live.length}) `) + 'Claude Sessions';
-  $('#folders').innerHTML = S.folders.length
+  $('#folders').html = S.folders.length
     ? S.folders.map((f) => `<button data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')
     : '<div class="hint">No folders yet. Start one session from a terminal first.</div>';
 }
 
+function renderSide() {
+  if (!S) return;
+  $('#navOverview').classList.toggle('active', !current);
+  const appItems = S.terminals.list.map((t) => {
+    const s = S.live.find((x) => x.appId === t.id);
+    if (s) lastKnown.set(t.id, s);
+    const known = s || lastKnown.get(t.id);
+    const st = t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
+    const title = known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
+    return `<button class="nav-item ${st.cls}${t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}">
+      <span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
+  });
+  $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
+  const wt = S.live.filter((s) => !s.appId);
+  $('#sideWt').html = wt.map((s) => {
+    const st = statusOf(s);
+    return `<div class="nav-row"><button class="nav-item ${st.cls}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its Windows Terminal tab">
+      <span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
+      <button class="btn small ghost" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'Move this session into the app' : 'Can move once it is idle'}">Move</button></div>`;
+  }).join('') || '<div class="side-empty">None.</div>';
+}
+
 function renderBanner() {
   if (offline) {
-    $('#banner').innerHTML = `<div class="banner offline"><div class="msg"><b>The dashboard server stopped.</b> Open Claude Sessions from the Desktop shortcut to start it again.</div></div>`;
+    $('#banner').html = `<div class="banner"><div class="msg"><b>The dashboard server stopped.</b> Open Claude Sessions from the Desktop shortcut to start it again. Sessions inside the app keep running.</div></div>`;
     return;
   }
   const fresh = S.closed.filter((c) => Date.now() - c.closedAt < 15 * 60000);
-  if (!fresh.length) { $('#banner').innerHTML = ''; return; }
+  if (!fresh.length) { $('#banner').html = ''; return; }
   const c = fresh[0];
   const more = fresh.length > 1 ? ` (and ${fresh.length - 1} more below)` : '';
-  $('#banner').innerHTML = `<div class="banner"><div class="msg"><b>${esc(label(c))}</b> was closed ${ago(c.closedAt)}${more}. Closed by accident?</div>
-    <button class="btn primary" data-act="resume" data-id="${esc(c.sessionId)}">Reopen</button>
+  $('#banner').html = `<div class="banner"><div class="msg"><b>${esc(label(c))}</b> was closed ${ago(c.closedAt)}${more}. Closed by accident?</div>
+    <button class="btn primary" data-act="resume" data-id="${esc(c.sessionId)}">Reopen here</button>
     <button class="btn ghost" data-act="dismiss" data-id="${esc(c.sessionId)}">Dismiss</button></div>`;
 }
 
 function renderLive() {
   $('#liveCount').textContent = S.live.length;
   if (!S.live.length) {
-    $('#live').innerHTML = '<div class="empty">No Claude sessions are open right now.</div>';
+    $('#live').html = '<div class="empty">No Claude sessions are open. Start one with <b>+ New session</b>.</div>';
     return;
   }
-  $('#live').innerHTML = '<div class="grid">' + S.live.map((s) => {
+  $('#live').html = '<div class="grid">' + S.live.map((s) => {
     const st = statusOf(s);
     const orig = s.nickname && s.title && s.nickname !== s.title ? `<span class="orig">${esc(s.title)}</span>` : '';
     const titleHtml = editing === s.sessionId
       ? `<input class="rename" data-id="${esc(s.sessionId)}" value="${esc(s.nickname || s.title || '')}" maxlength="80" placeholder="Name this session">`
       : `<div class="title">${esc(label(s))}${orig}</div>`;
+    const buttons = s.appId
+      ? `<button class="btn primary" data-act="open" data-tid="${esc(s.appId)}">Open</button>`
+      : `<button class="btn primary" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>
+         <button class="btn" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'End it in Windows Terminal and continue it here' : 'Can move once it is idle'}">Move here</button>`;
     return `<div class="card ${st.cls}">
       <div class="row"><span class="status"><span class="dot"></span>${st.text} <span class="since">· ${dur(s.statusSince)}</span></span>
-        <span class="tag" title="Session ${esc(s.sessionId)}, process ${s.pid}">${esc(s.name || '')}</span></div>
+        <span class="where">${s.appId ? 'in app' : 'Windows Terminal'}</span></div>
       ${titleHtml}
       <div class="meta"><span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span><span>opened ${ago(s.startedAt)}</span>${s.kind !== 'interactive' ? `<span>${esc(s.kind)}</span>` : ''}</div>
       ${s.lastPrompt ? `<div class="prompt" title="${esc(s.lastPrompt)}">${esc(s.lastPrompt)}</div>` : ''}
       <div class="actions">
-        <button class="btn primary" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>
+        ${buttons}
         <button class="btn ghost" data-act="rename" data-id="${esc(s.sessionId)}">Rename</button>
-        <button class="btn ghost" data-act="copy" data-id="${esc(s.sessionId)}" title="Copy the resume command">Copy ID</button>
         <span class="ver">v${esc(s.version || '?')}</span>
       </div></div>`;
   }).join('') + '</div>';
@@ -277,6 +549,7 @@ function itemHtml(s, closed) {
     <div class="t">${esc(label(s))}</div>
     <div class="a">
       <button class="btn${closed ? ' primary' : ''}" data-act="resume" data-id="${esc(s.sessionId)}">Reopen</button>
+      <button class="btn ghost" data-act="resume-wt" data-id="${esc(s.sessionId)}" title="Reopen in Windows Terminal instead">Terminal</button>
       ${closed ? `<button class="btn ghost" data-act="dismiss" data-id="${esc(s.sessionId)}" title="Remove from this list">✕</button>` : ''}
     </div>
     <div class="s">${when}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span>${p ? `<span class="p" title="${esc(p)}">${esc(p)}</span>` : ''}</div>
@@ -286,7 +559,7 @@ function itemHtml(s, closed) {
 function renderClosed() {
   $('#closedWrap').hidden = !S.closed.length;
   $('#closedCount').textContent = S.closed.length;
-  $('#closed').innerHTML = S.closed.map((c) => itemHtml(c, true)).join('');
+  $('#closed').html = S.closed.map((c) => itemHtml(c, true)).join('');
 }
 
 function renderHistory() {
@@ -294,7 +567,7 @@ function renderHistory() {
   const all = S.history.filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
   $('#histCount').textContent = all.length;
   const shown = all.slice(0, histLimit);
-  $('#history').innerHTML = shown.length
+  $('#history').html = shown.length
     ? shown.map((h) => itemHtml(h, false)).join('') + (all.length > shown.length ? `<button class="more" data-act="more">Show ${Math.min(15, all.length - shown.length)} more</button>` : '')
     : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : 'No other sessions in the last 14 days.'}</div>`;
 }
@@ -308,13 +581,18 @@ function renderFooter() {
   else if (u.error) html = `<span title="${esc(u.error)}">Update check failed</span> <button class="btn ghost" data-act="check">Retry</button>`;
   else if (u.checkedAt) html = `Up to date · checked ${ago(u.checkedAt)} <button class="btn ghost" data-act="check">Check now</button>`;
   else html = '<button class="btn ghost" data-act="check">Check for updates</button>';
-  $('#update').innerHTML = html;
+  if (S.terminals.outdated) html += ' <span title="Applies once every session in the app has ended">· terminal engine update waiting</span>';
+  $('#update').html = html;
   $('#optStartup').checked = S.settings.startWithWindows;
   $('#optAuto').checked = S.settings.autoUpdate;
 }
 
 function render() {
+  if (!S) return;
   renderHeader();
+  renderSide();
+  renderTermBar();
+  if (current) return; // the overview is hidden; skip its work
   renderBanner();
   if (!editing) renderLive();
   renderClosed();
@@ -322,15 +600,32 @@ function render() {
   renderFooter();
 }
 
-async function refresh() {
-  try {
-    S = await api('/api/state');
-    offline = false;
-    render();
-  } catch {
-    offline = true;
-    renderBanner();
-  }
+let refreshing = null;
+function refresh() {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      S = await api('/api/state');
+      offline = false;
+      hostUp = S.terminals.up || !S.terminals.list.length;
+      // A terminal the host no longer has (closed in another window) leaves the screen too.
+      for (const id of [...terms.keys()]) {
+        if (!S.terminals.list.some((t) => t.id === id)) {
+          terms.get(id).term.dispose();
+          terms.get(id).el.remove();
+          terms.delete(id);
+          if (current === id) { current = null; show(null); }
+        }
+      }
+      render();
+    } catch {
+      offline = true;
+      if (!current && S) renderBanner();
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
 }
 
 async function act(name, body, okMsg) {
@@ -344,6 +639,13 @@ async function act(name, body, okMsg) {
   }
 }
 
+// Starts a terminal through the given route and switches to it.
+async function openNew(route, body, msg) {
+  const r = await act(route, { ...body, ...proposedSize() }, msg);
+  if (r && r.id) { getTerm(r.id); show(r.id); }
+  return r;
+}
+
 function saveRename(inp) {
   const id = inp.dataset.id;
   editing = null;
@@ -355,20 +657,36 @@ document.addEventListener('click', async (e) => {
   if (!b) return;
   const id = b.dataset.id;
   switch (b.dataset.act) {
+    case 'overview': show(null); break;
+    case 'open': show(b.dataset.tid); break;
     case 'focus': b.disabled = true; await act('/api/focus', { sessionId: id }); b.disabled = false; break;
-    case 'resume': b.disabled = true; await act('/api/resume', { sessionId: id }, 'Reopening in a new tab…'); break;
+    case 'move': b.disabled = true; await openNew('/api/move', { sessionId: id }, 'Moving into the app…'); break;
+    case 'resume': {
+      b.disabled = true;
+      const old = b.dataset.replace;
+      const r = await openNew('/api/resume', { sessionId: id }, 'Reopening…');
+      if (r && r.id && old) api('/api/term/forget', { id: old }).catch(() => {});
+      if (!r) b.disabled = false;
+      break;
+    }
+    case 'resume-wt': b.disabled = true; await act('/api/resume', { sessionId: id, where: 'terminal' }, 'Reopening in Windows Terminal…'); break;
     case 'dismiss': act('/api/closed/dismiss', { sessionId: id }); break;
     case 'rename': editing = id; renderLive(); break;
-    case 'copy':
-      try { await navigator.clipboard.writeText(`claude --resume ${id}`); toast('Copied: claude --resume ' + id.slice(0, 8) + '…'); }
-      catch { toast(id); }
+    case 'new': $('#newMenu').open = false; await openNew('/api/new', { cwd: b.dataset.cwd }, 'Starting Claude…'); break;
+    case 'kill':
+      endArmed = current;
+      renderTermBar();
+      clearTimeout(disarmTimer);
+      disarmTimer = setTimeout(() => { endArmed = null; renderTermBar(); }, 6000);
       break;
-    case 'new': $('#newMenu').open = false; act('/api/new', { cwd: b.dataset.cwd }, 'Opening a new tab…'); break;
+    case 'kill-no': clearTimeout(disarmTimer); endArmed = null; renderTermBar(); break;
+    case 'kill-yes': clearTimeout(disarmTimer); endArmed = null; await act('/api/term/kill', { id: current }, 'Ending session…'); break;
+    case 'forget': await act('/api/term/forget', { id: b.dataset.tid }); break;
     case 'more': histLimit += 15; renderHistory(); break;
     case 'check': S.update = { ...S.update, busy: true }; renderFooter(); act('/api/update/check', {}); break;
     case 'install':
       b.disabled = true;
-      if (await act('/api/update/install', {}, 'Installing, the page reconnects in a few seconds')) setTimeout(() => location.reload(), 6000);
+      if (await act('/api/update/install', {}, 'Installing; sessions in the app keep running')) setTimeout(() => location.reload(), 6000);
       break;
   }
 });
@@ -391,7 +709,11 @@ $('#search').addEventListener('input', () => { histLimit = 15; if (S) renderHist
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? 'Starts with Windows' : 'Will not start with Windows'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
-refresh();
+connectStream();
+refresh().then(() => {
+  const m = /^#t\/([0-9a-f-]{36})$/.exec(location.hash);
+  if (m && S && S.terminals.list.some((t) => t.id === m[1])) show(m[1]);
+});
 setInterval(refresh, 3000);
 </script>
 </body>
