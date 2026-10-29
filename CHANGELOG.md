@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.2.1 (2026-10-28)
+
+Easier to gather sessions into a project.
+
+- **Add sessions…** on a project's page: a searchable list of every session (open now, recently closed, and every older one Claude still has), tick as many as you like and add them in one go. Sessions in another project move over.
+- **Drag and drop**: drag any session card, History row or sidebar session onto a project in the sidebar.
+- Sessions put in a project stay on its page however old they are, not just for the 14 days History shows.
+- The project chip on a session now reads **+ Add to project**.
+
 ## 1.2.0 (2026-10-28)
 
 Projects, plan usage, context, skills and the wiki, all in the app.

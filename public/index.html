@@ -268,6 +268,21 @@
   .dlg .add input { flex: 1; }
   .dlg .btns { display: flex; gap: 8px; justify-content: flex-end; }
   .dlg .note { color: var(--muted); font-size: 12.5px; margin: 0; }
+  #pickDlg { width: min(760px, 94vw); }
+  .pick-list { height: min(52vh, 480px); overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .pick-list .r-group { padding: 10px 12px 4px; }
+  .pick { display: grid; grid-template-columns: 18px 1fr auto; gap: 2px 10px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--border); cursor: pointer; }
+  .pick:hover { background: var(--surface-2); }
+  .pick input { accent-color: var(--accent); width: 15px; height: 15px; grid-row: span 2; }
+  .pick .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick .s { grid-column: 2 / span 2; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick .in { font-size: 11.5px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+
+  /* drag a session onto a project */
+  [draggable="true"] { -webkit-user-drag: element; }
+  .dragging { opacity: .5; }
+  .drop-ok { outline: 2px dashed var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 14%, transparent) !important; }
+  .side-hint { color: var(--faint); font-size: 11.5px; padding: 4px 10px 0; }
 
   #termView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--term-bg); }
   #termView[hidden] { display: none; }
@@ -436,6 +451,21 @@
       <button type="button" class="btn primary" data-act="proj-save">Save</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="pickDlg">
+  <div class="dlg">
+    <h3 id="pickTitle">Add sessions</h3>
+    <p class="note">Tick the sessions that belong in this project: open ones, recently closed ones and anything older. Sessions in another project move here.</p>
+    <div class="row"><input type="text" class="search" id="pickSearch" placeholder="Search titles, prompts, folders" autocomplete="off" style="flex:1">
+      <button type="button" class="btn small ghost" data-act="pick-all">Tick all shown</button></div>
+    <div class="pick-list" id="pickList"></div>
+    <div class="btns">
+      <span class="note" id="pickCount" style="margin-right:auto;align-self:center"></span>
+      <button type="button" class="btn" data-act="pick-cancel">Cancel</button>
+      <button type="button" class="btn primary" data-act="pick-save" id="pickSave">Add</button>
+    </div>
+  </div>
 </dialog>
 
 <div class="toast" id="toast"></div>
@@ -912,9 +942,9 @@ function renderSide() {
     const sub = open.length
       ? `${open.length} open` + (needs ? ` · ${needs} need you` : working ? ` · ${working} working` : '')
       : `${everything.filter((s) => s.project === p.id).length} recent`;
-    return `<button class="nav-item${view === 'overview' && projFilter === p.id ? ' active' : ''}" data-act="go" data-view="overview" data-arg="${esc(p.id)}">
+    return `<button class="nav-item${view === 'overview' && projFilter === p.id ? ' active' : ''}" data-act="go" data-view="overview" data-arg="${esc(p.id)}" data-drop-pid="${esc(p.id)}">
       <span class="pdot" style="background:${esc(p.color)};margin-top:4px"></span><span><span class="nt">${esc(p.name)}</span><span class="ns">${sub}</span></span></button>`;
-  }).join('') || '<div class="side-empty">Group sessions by what they are for. Use + to make one.</div>';
+  }).join('') + (S.projects.length ? '<div class="side-hint">Drag any session onto a project to put it there.</div>' : '') || '<div class="side-empty">Group sessions by what they are for. Use + to make one.</div>';
 
   const appItems = S.terminals.list.map((t) => {
     const s = S.live.find((x) => x.appId === t.id);
@@ -922,14 +952,14 @@ function renderSide() {
     const known = s || lastKnown.get(t.id);
     const st = t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
     const title = known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
-    return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}">
+    return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}"${known ? ` draggable="true" data-sid="${esc(known.sessionId)}"` : ''}>
       ${known ? pbarOf(known) : ''}<span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
   });
   $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
   const wt = S.live.filter((s) => !s.appId);
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
-    return `<div class="nav-row"><button class="nav-item ${st.cls}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its Windows Terminal tab">
+    return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its Windows Terminal tab">
       ${pbarOf(s)}<span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
       <button class="btn small ghost" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'Move this session into the app' : 'Can move once it is idle'}">Move</button></div>`;
   }).join('') || '<div class="side-empty">None.</div>';
@@ -941,7 +971,7 @@ function pchip(s) {
   const p = project(s.project);
   return p
     ? `<button class="pchip" data-act="pmenu" data-id="${esc(s.sessionId)}" title="Project (click to change)"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</button>`
-    : `<button class="pchip unset" data-act="pmenu" data-id="${esc(s.sessionId)}" title="Put this session in a project">+ Project</button>`;
+    : `<button class="pchip unset" data-act="pmenu" data-id="${esc(s.sessionId)}" title="Put this session in a project (or drag it onto one in the sidebar)">+ Add to project</button>`;
 }
 
 function ctxBadge(s) {
@@ -969,6 +999,7 @@ function renderProjHead() {
   if (!p) { $('#projHead').html = ''; return; }
   $('#projHead').html = `<div class="phead" style="--pc:${esc(p.color)}">
     <h3>${esc(p.name)}</h3><span class="spacer"></span>
+    <button class="btn primary" data-act="pick-open" data-pid="${esc(p.id)}" title="Put open, closed or older sessions in this project">Add sessions…</button>
     <button class="btn" data-act="proj-edit" data-pid="${esc(p.id)}">Edit project</button>
     <div class="folders">${p.folders.length
       ? p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" title="Start a new Claude session in ${esc(f)}">+ New session in ${esc(home(f))}</button>`).join('')
@@ -992,7 +1023,7 @@ function renderLive() {
       ? `<button class="btn primary" data-act="open" data-tid="${esc(s.appId)}">Open</button>`
       : `<button class="btn primary" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>
          <button class="btn" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'End it in Windows Terminal and continue it here' : 'Can move once it is idle'}">Move here</button>`;
-    return `<div class="card ${st.cls}">
+    return `<div class="card ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}">
       <div class="row"><span class="status"><span class="dot"></span>${st.text} <span class="since">· ${dur(s.statusSince)}</span></span>
         <span class="where">${s.appId ? 'in app' : 'Windows Terminal'}</span></div>
       ${titleHtml}
@@ -1012,7 +1043,7 @@ function itemHtml(s, closed) {
   const when = closed ? `<span class="closed-ago">closed ${ago(s.closedAt)}</span>` : `<span>active ${ago(s.lastActivity)}</span>`;
   const fresh = closed && Date.now() - s.closedAt < 15 * 60000 ? ' fresh' : '';
   const p = s.lastPrompt || s.firstPrompt;
-  return `<div class="item${fresh}">
+  return `<div class="item${fresh}" draggable="true" data-sid="${esc(s.sessionId)}">
     <div class="t">${esc(label(s))}</div>
     <div class="a">
       <button class="btn${closed ? ' primary' : ''}" data-act="resume" data-id="${esc(s.sessionId)}">Reopen</button>
@@ -1037,7 +1068,7 @@ function renderHistory() {
   const shown = all.slice(0, histLimit);
   $('#history').html = shown.length
     ? shown.map((h) => itemHtml(h, false)).join('') + (all.length > shown.length ? `<button class="more" data-act="more">Show ${Math.min(15, all.length - shown.length)} more</button>` : '')
-    : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : projFilter ? 'No other sessions of this project in the last 14 days.' : 'No other sessions in the last 14 days.'}</div>`;
+    : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : projFilter ? 'No past sessions in this project yet. Use Add sessions… or drag sessions onto it in the sidebar.' : 'No other sessions in the last 14 days.'}</div>`;
 }
 
 function renderFooter() {
@@ -1108,6 +1139,102 @@ function readProjEditor() {
   editProj.name = $('#projName').value;
   editProj.folders = [...$('#projFolders').querySelectorAll('input:checked')].map((i) => i.value);
 }
+
+// ---- putting sessions in a project: picker and drag and drop -------------------------------
+
+let pick = null; // { pid, all: [...], ticked: Set }
+
+async function openPicker(pid) {
+  const p = project(pid);
+  if (!p) return;
+  pick = { pid, all: null, ticked: new Set() };
+  $('#pickTitle').innerHTML = `Add sessions to <span class="pdot" style="background:${esc(p.color)}"></span> ${esc(p.name)}`;
+  $('#pickSearch').value = '';
+  $('#pickList').innerHTML = '<div class="side-empty" style="padding:12px">Loading every session…</div>';
+  renderPickCount();
+  $('#pickDlg').showModal();
+  $('#pickSearch').focus();
+  try { pick.all = (await api('/api/sessions/all')).sessions; } catch (e) { toast(e.message, true); pick.all = []; }
+  renderPicker();
+}
+
+function pickShown() {
+  const q = $('#pickSearch').value.trim().toLowerCase();
+  return pick.all.filter((s) => s.project !== pick.pid &&
+    (!q || [label(s), s.title, s.firstPrompt, s.lastPrompt, s.cwd].some((x) => x && x.toLowerCase().includes(q))));
+}
+
+function renderPicker() {
+  if (!pick || !pick.all) return;
+  const shown = pickShown();
+  const groups = [['open', 'Open now'], ['closed', 'Recently closed'], ['past', 'Earlier']];
+  const already = pick.all.filter((s) => s.project === pick.pid).length;
+  $('#pickList').innerHTML = groups.map(([k, name]) => {
+    const rows = shown.filter((s) => s.state === k);
+    if (!rows.length) return '';
+    return `<div class="r-group">${name} · ${rows.length}</div>` + rows.map((s) => {
+      const other = project(s.project);
+      const p = s.lastPrompt || s.firstPrompt;
+      return `<label class="pick"><input type="checkbox" data-sid="${esc(s.sessionId)}" ${pick.ticked.has(s.sessionId) ? 'checked' : ''}>
+        <span class="t">${esc(label(s))}</span>
+        <span class="in">${other ? `<span class="pdot" style="background:${esc(other.color)}"></span>in ${esc(other.name)}` : ''}</span>
+        <span class="s">${esc(home(s.cwd))} · ${k === 'open' ? 'open now' : k === 'closed' ? 'closed ' + ago(s.when) : 'active ' + ago(s.when)}${p ? ' · ' + esc(p) : ''}</span></label>`;
+    }).join('');
+  }).join('') || `<div class="empty" style="border:0">${$('#pickSearch').value.trim() ? 'Nothing matches that search.' : 'Every session is in this project already.'}</div>`;
+  if (already) $('#pickList').insertAdjacentHTML('beforeend', `<div class="side-hint" style="padding:10px 12px">${already} session${already > 1 ? 's are' : ' is'} in this project already and not listed.</div>`);
+  renderPickCount();
+}
+
+function renderPickCount() {
+  const n = pick ? pick.ticked.size : 0;
+  $('#pickCount').textContent = n ? `${n} ticked` : 'Nothing ticked yet';
+  $('#pickSave').disabled = !n;
+  $('#pickSave').textContent = n ? `Add ${n} session${n > 1 ? 's' : ''}` : 'Add';
+}
+
+$('#pickList').addEventListener('change', (e) => {
+  const sid = e.target.dataset && e.target.dataset.sid;
+  if (!sid || !pick) return;
+  if (e.target.checked) pick.ticked.add(sid); else pick.ticked.delete(sid);
+  renderPickCount();
+});
+$('#pickSearch').addEventListener('input', renderPicker);
+
+let dragSid = null;
+document.addEventListener('dragstart', (e) => {
+  const el = e.target.closest && e.target.closest('[data-sid][draggable="true"]');
+  if (!el) return;
+  dragSid = el.dataset.sid;
+  e.dataTransfer.setData('text/plain', dragSid);
+  e.dataTransfer.effectAllowed = 'move';
+  el.classList.add('dragging');
+  closePmenu();
+});
+document.addEventListener('dragend', (e) => {
+  dragSid = null;
+  document.querySelectorAll('.dragging, .drop-ok').forEach((x) => x.classList.remove('dragging', 'drop-ok'));
+});
+document.addEventListener('dragover', (e) => {
+  const t = dragSid && e.target.closest && e.target.closest('[data-drop-pid]');
+  if (!t) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.drop-ok').forEach((x) => { if (x !== t) x.classList.remove('drop-ok'); });
+  t.classList.add('drop-ok');
+});
+document.addEventListener('dragleave', (e) => {
+  const t = e.target.closest && e.target.closest('[data-drop-pid]');
+  if (t && !t.contains(e.relatedTarget)) t.classList.remove('drop-ok');
+});
+document.addEventListener('drop', async (e) => {
+  const t = dragSid && e.target.closest && e.target.closest('[data-drop-pid]');
+  if (!t) return;
+  e.preventDefault();
+  const sid = dragSid;
+  const p = project(t.dataset.dropPid);
+  t.classList.remove('drop-ok');
+  if (p) await act('/api/projects/assign', { sessionId: sid, projectId: p.id }, `Put in ${p.name}`);
+});
 
 // ---- context and plan usage -------------------------------------------------------------
 
@@ -1446,6 +1573,21 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'proj-new': closePmenu(); openProjEditor(null, b.dataset.for ? pmenuFor : null); break;
+    case 'pick-open': openPicker(b.dataset.pid); break;
+    case 'pick-cancel': $('#pickDlg').close(); break;
+    case 'pick-all':
+      if (pick && pick.all) { for (const s of pickShown()) pick.ticked.add(s.sessionId); renderPicker(); }
+      break;
+    case 'pick-save': {
+      if (!pick || !pick.ticked.size) break;
+      const p = project(pick.pid);
+      const n = pick.ticked.size;
+      b.disabled = true;
+      const r = await act('/api/projects/assign', { sessionIds: [...pick.ticked], projectId: pick.pid }, `${n} session${n > 1 ? 's' : ''} put in ${p ? p.name : 'the project'}`);
+      b.disabled = false;
+      if (r) $('#pickDlg').close();
+      break;
+    }
     case 'proj-edit': openProjEditor(project(b.dataset.pid)); break;
     case 'proj-color': readProjEditor(); editProj.color = b.dataset.color; renderProjEditor(); break;
     case 'proj-add': {

@@ -538,6 +538,35 @@ function request(port, method, p, { body, headers = {} } = {}) {
       assert.ok(s.live.every((x) => x.project === null));
     });
 
+    await check('http: put many sessions in a project at once, old ones stay listed with it', async () => {
+      // A session last used 30 days ago: too old for History until it is put in a project.
+      const ID4 = '44444444-4444-4444-8444-444444444444';
+      const old = path.join(fx.dir, 'projects', 'C--work', ID4 + '.jsonl');
+      fs.writeFileSync(old, JSON.stringify({ type: 'user', cwd: fx.work, message: { content: 'an old job' } }) + '\n');
+      const then = (Date.now() - 30 * 86400000) / 1000;
+      fs.utimesSync(old, then, then);
+      const all = (await request(PORT, 'GET', '/api/sessions/all')).json.sessions;
+      const states = Object.fromEntries(all.map((s) => [s.sessionId, s.state]));
+      assert.strictEqual(states[ID1], 'open');
+      assert.strictEqual(states[ID2], 'closed');
+      assert.strictEqual(states[ID4], 'past', 'the picker lists sessions of any age');
+      let s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.ok(!s.history.some((h) => h.sessionId === ID4));
+      const pid = (await request(PORT, 'POST', '/api/projects/save', { body: { name: 'Bulk', color: '#4fbf8a', folders: [] }, headers: H })).json.id;
+      const bad = await request(PORT, 'POST', '/api/projects/assign', { body: { sessionIds: [ID1, 'nope'], projectId: pid }, headers: H });
+      assert.strictEqual(bad.status, 400, 'one bad id refuses the whole batch');
+      const r = await request(PORT, 'POST', '/api/projects/assign', { body: { sessionIds: [ID1, ID2, ID4], projectId: pid }, headers: H });
+      assert.strictEqual(r.json.count, 3);
+      s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.strictEqual(s.live.find((x) => x.sessionId === ID1).project, pid);
+      assert.strictEqual(s.closed.find((x) => x.sessionId === ID2).project, pid);
+      const h4 = s.history.find((h) => h.sessionId === ID4);
+      assert.ok(h4 && h4.project === pid, 'an old session put in a project shows up in its history');
+      await request(PORT, 'POST', '/api/projects/delete', { body: { id: pid }, headers: H });
+      s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.ok(!s.history.some((h) => h.sessionId === ID4), 'deleting the project lets the old session go again');
+    });
+
     await check('http: wiki, skills and a skill file', async () => {
       const w = await request(PORT, 'POST', '/api/settings', { body: { wikiDirs: [path.join(fx.dir, 'wiki')] }, headers: H });
       assert.strictEqual(w.status, 200);

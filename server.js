@@ -68,10 +68,16 @@ async function poll() {
 
 let historyCache = { at: 0, key: '', items: [] };
 
+// Sessions put in a project by hand stay listed past the 14 days, so a project keeps them together.
+function keptIds() {
+  return new Set(Object.entries(store.state.assign).filter(([, p]) => p !== 'none').map(([id]) => id));
+}
+
 function getHistory(excludeIds) {
-  const key = [...excludeIds].sort().join(',');
+  const keep = keptIds();
+  const key = [...excludeIds].sort().join(',') + '|' + [...keep].sort().join(',');
   if (Date.now() - historyCache.at < HISTORY_TTL_MS && historyCache.key === key) return historyCache.items;
-  historyCache = { at: Date.now(), key, items: sessions.history(CLAUDE_DIR, { excludeIds }) };
+  historyCache = { at: Date.now(), key, items: sessions.history(CLAUDE_DIR, { excludeIds, keep }) };
   return historyCache.items;
 }
 
@@ -151,6 +157,7 @@ const wikiCache = cached(20000, () => library.wiki({
   wikiDirs: store.state.settings.wikiDirs,
   folders: [os.homedir(), ...knownProjectFolders()],
 }));
+const allCache = cached(30000, () => sessions.history(CLAUDE_DIR, { days: 36500, limit: 2000 }));
 const skillsCache = cached(30000, () => library.skills({ claudeDir: CLAUDE_DIR, folders: knownProjectFolders() }));
 
 function contextBrief(s) {
@@ -525,14 +532,35 @@ const routes = {
     return { ok: true };
   },
 
-  // projectId: a project, 'none' (keep it out of every project), or null (go by folder again)
+  // sessionId or sessionIds (many at once); projectId: a project, 'none' (keep
+  // them out of every project), or null (their folder decides again)
   'POST /api/projects/assign': async (b) => {
-    if (!sessions.UUID_RE.test(String(b.sessionId))) throw fail(400, 'bad session id');
-    if (b.projectId === null || b.projectId === undefined) delete store.state.assign[b.sessionId];
-    else if (b.projectId === 'none' || store.state.projects.some((p) => p.id === b.projectId)) store.state.assign[b.sessionId] = b.projectId;
-    else throw fail(404, 'no such project');
+    const ids = Array.isArray(b.sessionIds) ? b.sessionIds : [b.sessionId];
+    if (!ids.length || ids.length > 1000 || !ids.every((id) => sessions.UUID_RE.test(String(id)))) throw fail(400, 'bad session id');
+    const clear = b.projectId === null || b.projectId === undefined;
+    if (!clear && b.projectId !== 'none' && !store.state.projects.some((p) => p.id === b.projectId)) throw fail(404, 'no such project');
+    for (const id of ids) {
+      if (clear) delete store.state.assign[id];
+      else store.state.assign[id] = b.projectId;
+    }
     store.save();
-    return { ok: true };
+    allCache.clear();
+    return { ok: true, count: ids.length };
+  },
+
+  // Every session there is (open, closed and every saved transcript), for picking ones to put in a project.
+  'GET /api/sessions/all': async () => {
+    const nick = store.state.nicknames;
+    const liveIds = new Set(live.map((s) => s.sessionId));
+    const closed = store.state.closed.filter((c) => !liveIds.has(c.sessionId));
+    const seen = new Set([...liveIds, ...closed.map((c) => c.sessionId)]);
+    const past = (await allCache()).filter((h) => !seen.has(h.sessionId));
+    const row = (s, state) => ({
+      sessionId: s.sessionId, state, cwd: s.cwd, title: s.title || null, firstPrompt: s.firstPrompt || null, lastPrompt: s.lastPrompt || null,
+      nickname: nick[s.sessionId] || null, when: state === 'open' ? s.lastActivity || s.startedAt : state === 'closed' ? s.closedAt : s.lastActivity,
+      project: projectOf(store.state, s), picked: store.state.assign[s.sessionId] || null,
+    });
+    return { sessions: [...live.map((s) => row(s, 'open')), ...closed.map((s) => row(s, 'closed')), ...past.map((s) => row(s, 'past'))] };
   },
 
   // ---- wiki, skills, context, plan usage

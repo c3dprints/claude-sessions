@@ -9,7 +9,7 @@ A local app for every Claude Code session on this PC: run sessions in built-in t
 - **Move here**: ends an idle Windows Terminal session and continues the same conversation inside the app.
 - **Recently closed**: when a session goes away it shows up here (kept 7 days) with **Reopen** (in the app) or **Terminal** (in Windows Terminal), both running `claude --resume <id>` in the same folder.
 - **History**: the last 14 days of sessions, searchable, each one reopenable.
-- **Projects**: name, color and folders. Sessions in a project's folders join it by themselves; any session can be put in or kept out of a project by hand. Each project has its own page.
+- **Projects**: name, color and folders. Sessions in a project's folders join it by themselves; any session can be put in or kept out of a project by hand, from its chip, by dragging it onto the project in the sidebar, or many at once with **Add sessions…** (lists every session of any age). Each project has its own page, which keeps its sessions however old they are.
 - **Plan usage** in the header (current 5-hour session and week, with reset times) and a **Context and usage** view that splits each session's context window like `/context`.
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
 - **Wiki**: the markdown pages in the wiki folders (`\\Mobius\Chris` by default) and Claude's auto memory, searchable.
