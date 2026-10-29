@@ -581,6 +581,26 @@ function request(port, method, p, { body, headers = {} } = {}) {
       assert.strictEqual((await request(PORT, 'GET', '/api/skills/file?id=..%5C..%5Cwin.ini')).status, 404);
     });
 
+    await check('http: settings: app theme and terminal look are checked, saved and reset', async () => {
+      const post = (body) => request(PORT, 'POST', '/api/settings', { body, headers: H });
+      let s = (await request(PORT, 'GET', '/api/state')).json.settings;
+      assert.strictEqual(s.theme, 'system');
+      assert.strictEqual(s.terminal, null);
+      assert.strictEqual((await post({ theme: 'light' })).json.theme, 'light');
+      assert.strictEqual((await post({ theme: 'pink' })).status, 400);
+      const ok = await post({ terminal: { preset: 'forest', background: '#0F1A14', foreground: '#d3e8d8', cursor: '#4fbf8a', fontSize: 15 } });
+      assert.deepStrictEqual(ok.json.terminal, { preset: 'forest', fontSize: 15, background: '#0f1a14', foreground: '#d3e8d8', cursor: '#4fbf8a' });
+      assert.strictEqual((await post({ terminal: { background: 'red;}', foreground: '#ffffff', cursor: '#ffffff' } })).status, 400, 'only #rrggbb colors');
+      const odd = await post({ terminal: { preset: '<b>', background: '#000000', foreground: '#ffffff', cursor: '#ffffff', fontSize: 99 } });
+      assert.strictEqual(odd.json.terminal.preset, 'custom');
+      assert.strictEqual(odd.json.terminal.fontSize, 13);
+      assert.strictEqual(odd.json.theme, 'light', 'one setting leaves the others alone');
+      await post({ terminal: null, theme: 'system' });
+      s = (await request(PORT, 'GET', '/api/state')).json.settings;
+      assert.strictEqual(s.terminal, null);
+      assert.strictEqual(s.theme, 'system');
+    });
+
     await check('http: context of open sessions, plan usage switch', async () => {
       const ctx = (await request(PORT, 'GET', '/api/context')).json.sessions;
       const one = ctx.find((c) => c.sessionId === ID1);

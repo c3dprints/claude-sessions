@@ -113,8 +113,26 @@ function snapshot() {
       autoUpdate: !!store.state.settings.autoUpdate,
       startWithWindows: startup.isEnabled(),
       wikiDirs: store.state.settings.wikiDirs,
+      theme: store.state.settings.theme || 'system',
+      terminal: store.state.settings.terminal || null,
     },
   };
+}
+
+// Terminal look: a preset name, three colors and a font size. null means the default look.
+const HEX = /^#[0-9a-f]{6}$/i;
+function checkTerminalLook(t) {
+  if (t === null) return null;
+  if (!t || typeof t !== 'object') throw fail(400, 'bad terminal settings');
+  const out = {
+    preset: typeof t.preset === 'string' && /^[a-z0-9-]{1,24}$/.test(t.preset) ? t.preset : 'custom',
+    fontSize: Number.isInteger(t.fontSize) && t.fontSize >= 10 && t.fontSize <= 24 ? t.fontSize : 13,
+  };
+  for (const k of ['background', 'foreground', 'cursor']) {
+    if (!HEX.test(String(t[k]))) throw fail(400, `terminal ${k} must be a color like #1e1e1e`);
+    out[k] = t[k].toLowerCase();
+  }
+  return out;
 }
 
 function recentFolders(list) {
@@ -604,6 +622,11 @@ const routes = {
       store.state.settings.wikiDirs = dirs;
       wikiCache.clear();
     }
+    if (b.theme !== undefined) {
+      if (!['system', 'dark', 'light'].includes(b.theme)) throw fail(400, 'theme must be system, dark or light');
+      store.state.settings.theme = b.theme;
+    }
+    if (b.terminal !== undefined) store.state.settings.terminal = checkTerminalLook(b.terminal);
     if (typeof b.autoUpdate === 'boolean') store.state.settings.autoUpdate = b.autoUpdate;
     if (typeof b.startWithWindows === 'boolean' && !TEST_MODE) await startup.setEnabled(b.startWithWindows);
     store.save();

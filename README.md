@@ -13,7 +13,8 @@ A local app for every Claude Code session on this PC: run sessions in built-in t
 - **Plan usage** in the header (current 5-hour session and week, with reset times) and a **Context and usage** view that splits each session's context window like `/context`.
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
 - **Wiki**: the markdown pages in the wiki folders (`\\Mobius\Chris` by default) and Claude's auto memory, searchable.
-- **Rename**, **New session** in a recent or project folder, **Start with Windows**, **self-update**.
+- **Settings** (gear, bottom left): updates, Start with Windows, app theme (System, Dark, Light) and the terminal look (presets or your own colors, text size). The icon next to **All sessions** checks for updates in one click.
+- **Rename**, **New session** in a recent or project folder, **self-update**.
 
 ## How it works
 
@@ -49,7 +50,7 @@ This clones the repo to `%LOCALAPPDATA%\ClaudeSessions\app`, checks out the newe
 
 ## Updates
 
-The installed copy is a git clone sitting on a release tag. Every 6 hours (and on **Check now**) it fetches tags from GitHub; if a newer `vX.Y.Z` exists the footer shows **Install and restart**, or it installs by itself when **Install updates automatically** is on. Only the dashboard restarts; sessions in the app keep running. A copy on a branch (the dev checkout) never moves itself.
+The installed copy is a git clone sitting on a release tag. Every 6 hours (and on the update icon or **Check now** in Settings) it fetches tags from GitHub; if a newer `vX.Y.Z` exists Settings shows **Install and restart**, or it installs by itself when **Install updates automatically** is on. Only the dashboard restarts; sessions in the app keep running. A copy on a branch (the dev checkout) never moves itself.
 
 ## Releasing
 

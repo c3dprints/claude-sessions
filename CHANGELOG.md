@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.3.0 (2026-10-29)
+
+Settings, an update button, themes and terminal colors.
+
+- **Settings** (gear at the bottom left of the sidebar): Updates (your version, Check now, Install, install automatically), Start with Windows, the app theme and the terminal look. The footer that used to hold these is gone.
+- **Update icon** next to All sessions: one click checks for a new version and says what it found. It spins while checking and shows a dot when an update is ready (click it to install) or the last check failed.
+- **App theme**: System (follows Windows), Dark or Light.
+- **Terminal look**: seven presets (Claude Sessions, Midnight, Graphite, Forest, Plum, Ember, Paper), or pick your own background, text and cursor colors, plus the text size. Changes apply to every terminal in the app right away, with a live sample, and **Reset to default** undoes them.
+
 ## 1.2.1 (2026-10-28)
 
 Easier to gather sessions into a project.

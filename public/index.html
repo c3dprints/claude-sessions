@@ -13,12 +13,13 @@
     --accent: #d97757; --accent-text: #fff;
     --working: #5b9cf6; --waiting: #e8b04b; --closed: #ef6b6b; --ok: #4fbf8a;
     --c-system: #8d95a5; --c-memory: #b07ce8; --c-messages: #5b9cf6; --c-free: #272c37;
-    --term-bg: #0b0d11;
+    --term-bg: #0b0d11; --code-bg: #0b0d11;
     --shadow: 0 1px 2px rgba(0,0,0,.3);
     color-scheme: dark;
   }
+  /* Light colors: when Windows is set to light and Settings says System, or when Settings says Light. */
   @media (prefers-color-scheme: light) {
-    :root {
+    :root:not([data-theme="dark"]) {
       --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e1e4ea;
       --text: #1b1f27; --muted: #5d6573; --faint: #9aa1ad;
       --working: #2f74e0; --waiting: #b97a06; --closed: #d23f3f; --ok: #1f9461;
@@ -26,6 +27,14 @@
       --shadow: 0 1px 2px rgba(20,24,33,.06);
       color-scheme: light;
     }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --border: #e1e4ea;
+    --text: #1b1f27; --muted: #5d6573; --faint: #9aa1ad;
+    --working: #2f74e0; --waiting: #b97a06; --closed: #d23f3f; --ok: #1f9461;
+    --c-system: #7b8494; --c-memory: #8a52d1; --c-messages: #2f74e0; --c-free: #e4e7ec;
+    --shadow: 0 1px 2px rgba(20,24,33,.06);
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -78,7 +87,19 @@
   #pmenu[hidden] { display: none; }
 
   .layout { flex: 1; display: grid; grid-template-columns: 264px 1fr; min-height: 0; }
-  nav.side { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px 16px; }
+  nav.side { border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+  .side-scroll { flex: 1; overflow-y: auto; padding: 10px 8px 16px; }
+  .side-foot { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--border); }
+  .side-foot .nav-item { flex: 1; min-width: 0; }
+  .side-foot .ver { color: var(--faint); font-size: 11.5px; padding-right: 6px; }
+  .icon-btn { position: relative; flex: none; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--muted); padding: 0; }
+  .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .icon-btn.spin svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .icon-btn.spin svg { animation: none; opacity: .5; } }
+  .icon-btn .badge { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+  .icon-btn.err .badge { background: var(--waiting); }
   .side-h { display: flex; align-items: center; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: 14px 10px 6px; }
   .side-h .btn { margin-left: auto; text-transform: none; letter-spacing: 0; padding: 0 7px; font-size: 15px; line-height: 20px; }
   .side-empty { color: var(--faint); font-size: 12.5px; padding: 2px 10px; }
@@ -165,7 +186,6 @@
   .search { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); width: 240px; }
   select.search { width: auto; max-width: 100%; }
 
-  footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; color: var(--muted); font-size: 13px; }
   .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
   .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
   .upd { display: inline-flex; gap: 8px; align-items: center; }
@@ -205,7 +225,7 @@
   .md ul, .md ol { padding-left: 1.5em; margin: .5em 0; }
   .md li { margin: .2em 0; }
   .md code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
-  .md pre { background: var(--term-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  .md pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
   .md pre code { background: none; border: 0; padding: 0; color: #d5d9e2; }
   .md blockquote { margin: .8em 0; padding: 2px 14px; border-left: 3px solid var(--accent); color: var(--muted); }
   .md table { border-collapse: collapse; margin: .8em 0; display: block; overflow-x: auto; font-size: 13px; }
@@ -269,6 +289,30 @@
   .dlg .btns { display: flex; gap: 8px; justify-content: flex-end; }
   .dlg .note { color: var(--muted); font-size: 12.5px; margin: 0; }
   #pickDlg { width: min(760px, 94vw); }
+
+  /* settings */
+  #setDlg { width: min(680px, 94vw); }
+  #setDlg .dlg { max-height: 88vh; overflow-y: auto; }
+  .set-sec { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .set-sec h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .set-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .set-row .lbl { min-width: 110px; }
+  .upd-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+  .upd-line .msg { flex: 1; min-width: 180px; }
+  .upd-line .msg b { font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-left: 1px solid var(--border); background: var(--surface); color: var(--muted); padding: 5px 14px; font-size: 13px; }
+  .seg button:first-child { border-left: 0; }
+  .seg button.on { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--text); font-weight: 600; }
+  .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .preset { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: 9px; padding: 6px; background: var(--surface); color: var(--text); text-align: left; font-size: 12.5px; }
+  .preset.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .preset .pv { height: 42px; border-radius: 5px; padding: 5px 7px; font: 11px/1.35 "Cascadia Mono", Consolas, monospace; overflow: hidden; white-space: nowrap; }
+  .preset .pv i { font-style: normal; }
+  .colors { display: flex; gap: 14px; flex-wrap: wrap; }
+  .colors label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .colors input[type=color] { width: 34px; height: 26px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); cursor: pointer; }
+  .term-sample { border-radius: 8px; border: 1px solid var(--border); padding: 10px 12px; font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace; line-height: 1.45; white-space: pre; overflow: hidden; }
   .pick-list { height: min(52vh, 480px); overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
   .pick-list .r-group { padding: 10px 12px 4px; }
   .pick { display: grid; grid-template-columns: 18px 1fr auto; gap: 2px 10px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--border); cursor: pointer; }
@@ -337,7 +381,11 @@
 
 <div class="layout">
   <nav class="side" aria-label="Sessions">
-    <button class="nav-item view" data-act="go" data-view="overview" id="navOverview"><span class="ico">▤</span><span class="nt">All sessions</span></button>
+   <div class="side-scroll">
+    <div class="nav-row">
+      <button class="nav-item view" data-act="go" data-view="overview" id="navOverview"><span class="ico">▤</span><span class="nt">All sessions</span></button>
+      <button class="icon-btn" data-act="upd-icon" id="updIcon" title="Check for updates"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97"/><path d="M13.6 2.2v3.1h-3.1"/></svg></button>
+    </div>
     <button class="nav-item view" data-act="go" data-view="context" id="navContext"><span class="ico">◔</span><span class="nt">Context and usage</span></button>
     <button class="nav-item view" data-act="go" data-view="skills" id="navSkills"><span class="ico">✦</span><span class="nt">Skills</span><span class="num" id="skillsNum"></span></button>
     <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
@@ -347,6 +395,13 @@
     <div id="sideApp"></div>
     <div class="side-h">In Windows Terminal</div>
     <div id="sideWt"></div>
+   </div>
+    <div class="side-foot">
+      <button class="nav-item view" data-act="settings" id="navSettings" title="Updates, theme and terminal colors">
+        <span class="ico"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" style="vertical-align:-2px"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7 3.4 3.4"/></svg></span><span class="nt">Settings</span>
+      </button>
+      <span class="ver" id="version"></span>
+    </div>
   </nav>
 
   <main>
@@ -366,14 +421,6 @@
           <input class="search" id="search" type="search" placeholder="Search titles, prompts, folders" autocomplete="off">
         </h2>
         <div class="list" id="history"></div>
-
-        <footer>
-          <span id="version"></span>
-          <span class="upd" id="update"></span>
-          <span class="spacer"></span>
-          <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
-          <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
-        </footer>
       </div>
     </section>
 
@@ -465,6 +512,45 @@
       <button type="button" class="btn" data-act="pick-cancel">Cancel</button>
       <button type="button" class="btn primary" data-act="pick-save" id="pickSave">Add</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="setDlg">
+  <div class="dlg">
+    <div class="row"><h3>Settings</h3><span class="spacer"></span><button type="button" class="btn ghost" data-act="set-close" aria-label="Close">✕</button></div>
+
+    <section class="set-sec">
+      <h4>Updates</h4>
+      <div class="upd-line" id="update"></div>
+      <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
+      <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
+      <p class="note">Installing restarts only the dashboard. Sessions in the app keep running.</p>
+    </section>
+
+    <section class="set-sec">
+      <h4>Appearance</h4>
+      <div class="set-row"><span class="lbl">App theme</span>
+        <div class="seg" id="themeSeg">
+          <button type="button" data-act="theme" data-v="system">System</button>
+          <button type="button" data-act="theme" data-v="dark">Dark</button>
+          <button type="button" data-act="theme" data-v="light">Light</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="set-sec">
+      <h4>Terminal</h4>
+      <div class="presets" id="presets"></div>
+      <div class="colors">
+        <label><input type="color" id="tcBg"> Background</label>
+        <label><input type="color" id="tcFg"> Text</label>
+        <label><input type="color" id="tcCur"> Cursor</label>
+        <label>Text size <select class="search" id="tcSize"></select></label>
+      </div>
+      <div class="term-sample" id="termSample"></div>
+      <p class="note">Applies to every terminal in the app right away. Claude picks its own colors for text inside the terminal; with a light background, also run <code>/theme</code> in Claude and choose a light theme.</p>
+      <div class="btns"><button type="button" class="btn ghost" data-act="term-reset">Reset to default</button></div>
+    </section>
   </div>
 </dialog>
 
@@ -667,6 +753,81 @@ function list(lines, start, hl) {
   return { html, next: i };
 }
 
+// ---- look: app theme and terminal colors -----------------------------------------------
+
+const TERM_PRESETS = [
+  { id: 'default', name: 'Claude Sessions', background: '#0b0d11', foreground: '#e8eaef', cursor: '#d97757' },
+  { id: 'midnight', name: 'Midnight', background: '#0d1526', foreground: '#d6e2ff', cursor: '#5b9cf6' },
+  { id: 'graphite', name: 'Graphite', background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#c8c8c8' },
+  { id: 'forest', name: 'Forest', background: '#0f1a14', foreground: '#d3e8d8', cursor: '#4fbf8a' },
+  { id: 'plum', name: 'Plum', background: '#1a1222', foreground: '#ece0f5', cursor: '#b07ce8' },
+  { id: 'ember', name: 'Ember', background: '#1c1210', foreground: '#f3e3d8', cursor: '#e8b04b' },
+  { id: 'paper', name: 'Paper (light)', background: '#fbfaf7', foreground: '#24292f', cursor: '#d97757' },
+];
+const TERM_DEFAULT = { preset: 'default', background: '#0b0d11', foreground: '#e8eaef', cursor: '#d97757', fontSize: 13 };
+let look = { theme: 'system', terminal: { ...TERM_DEFAULT } };
+let lookTouched = 0; // time of the last change made here; the 3 second refresh leaves it alone for a moment
+
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function mix(a, b, w) {
+  const x = hexRgb(a), y = hexRgb(b);
+  return '#' + x.map((v, i) => Math.round(v * (1 - w) + y[i] * w).toString(16).padStart(2, '0')).join('');
+}
+function isLight(h) { const [r, g, b] = hexRgb(h); return r * 0.299 + g * 0.587 + b * 0.114 > 150; }
+
+function xtermTheme(t) {
+  return {
+    background: t.background, foreground: t.foreground, cursor: t.cursor,
+    cursorAccent: t.background,
+    selectionBackground: mix(t.background, t.foreground, 0.28),
+    // xterm's default white and black disappear on a background of the same shade.
+    ...(isLight(t.background) ? { white: '#6e7781', brightWhite: '#8c959f' } : {}),
+  };
+}
+
+function applyLook() {
+  const root = document.documentElement;
+  if (look.theme === 'system') root.removeAttribute('data-theme'); else root.dataset.theme = look.theme;
+  const t = look.terminal;
+  root.style.setProperty('--term-bg', t.background);
+  for (const x of terms.values()) {
+    x.term.options.theme = xtermTheme(t);
+    x.term.options.fontSize = t.fontSize;
+  }
+  fitCurrent();
+  try { localStorage.setItem('cs-look', JSON.stringify(look)); } catch { /* only saves a flash on load */ }
+}
+
+// The saved look as fast as possible on load, before the first state arrives.
+try {
+  const saved = JSON.parse(localStorage.getItem('cs-look') || 'null');
+  if (saved && saved.terminal && saved.terminal.background) look = saved;
+} catch { /* no saved look */ }
+if (look.theme !== 'system') document.documentElement.dataset.theme = look.theme;
+document.documentElement.style.setProperty('--term-bg', look.terminal.background);
+
+function lookFromState() {
+  if (Date.now() - lookTouched < 4000) return;
+  const next = { theme: S.settings.theme || 'system', terminal: { ...TERM_DEFAULT, ...(S.settings.terminal || {}) } };
+  if (JSON.stringify(next) === JSON.stringify(look)) return;
+  look = next;
+  applyLook();
+  if ($('#setDlg').open) renderSettings();
+}
+
+let lookTimer;
+function saveLook(body, msg) {
+  lookTouched = Date.now();
+  applyLook();
+  if ($('#setDlg').open) renderSettings();
+  clearTimeout(lookTimer);
+  // Color pickers fire while dragging; send the last one.
+  lookTimer = setTimeout(async () => {
+    try { await api('/api/settings', body()); lookTouched = Date.now(); if (msg) toast(msg); }
+    catch (e) { toast(e.message, true); }
+  }, 350);
+}
+
 // ---- terminals ---------------------------------------------------------------
 
 const terms = new Map(); // id -> { term, fit, el, sent: 'colsxrows' }
@@ -686,10 +847,10 @@ function getTerm(id) {
   $('#termStack').appendChild(el);
   const term = new Terminal({
     fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
-    fontSize: 13.5,
+    fontSize: look.terminal.fontSize,
     cursorBlink: true,
     scrollback: 10000,
-    theme: { background: '#0b0d11', foreground: '#e8eaef', cursor: '#d97757', selectionBackground: '#3a4458' },
+    theme: xtermTheme(look.terminal),
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -1071,19 +1232,92 @@ function renderHistory() {
     : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : projFilter ? 'No past sessions in this project yet. Use Add sessions… or drag sessions onto it in the sidebar.' : 'No other sessions in the last 14 days.'}</div>`;
 }
 
-function renderFooter() {
-  $('#version').textContent = `Claude Sessions v${S.app.version}`;
+// ---- updates and settings ----------------------------------------------------------------
+
+// The icon next to All sessions: spins while checking, a dot when an update is ready.
+function renderUpdIcon() {
+  const u = S.update || {};
+  const b = $('#updIcon');
+  b.classList.toggle('spin', !!u.busy);
+  b.classList.toggle('err', !u.busy && !u.available && !!u.error);
+  const badge = !u.busy && (u.available || u.error);
+  if (!!b.querySelector('.badge') !== !!badge) {
+    if (badge) b.insertAdjacentHTML('beforeend', '<span class="badge"></span>'); else b.querySelector('.badge').remove();
+  }
+  b.title = u.busy ? 'Checking for updates…'
+    : u.available ? `Version ${u.latest} is ready. Click to see it.`
+      : u.error ? 'The last update check failed. Click to try again.'
+        : `Check for updates${u.checkedAt ? ` (up to date, checked ${ago(u.checkedAt)})` : ''}`;
+  $('#version').textContent = 'v' + S.app.version;
+}
+
+function renderUpdates() {
   const u = S.update || {};
   let html;
-  if (u.busy) html = 'Checking for updates…';
-  else if (u.available) html = `<span class="upd ready">${esc(u.latest)} is ready</span> ${u.mode === 'release' ? '<button class="btn primary" data-act="install">Install and restart</button>' : '<span>(dev copy: git pull)</span>'}`;
-  else if (u.error) html = `<span title="${esc(u.error)}">Update check failed</span> <button class="btn ghost" data-act="check">Retry</button>`;
-  else if (u.checkedAt) html = `Up to date · checked ${ago(u.checkedAt)} <button class="btn ghost" data-act="check">Check now</button>`;
-  else html = '<button class="btn ghost" data-act="check">Check for updates</button>';
-  if (S.terminals.outdated) html += ' <span title="Applies once every session in the app has ended">· terminal engine update waiting</span>';
+  const now = `<span class="msg">You have <b>v${esc(S.app.version)}</b>`;
+  if (u.busy) html = `${now}. Checking for a newer one…</span>`;
+  else if (u.available) {
+    html = `<span class="msg"><b>${esc(u.latest)}</b> is ready (you have v${esc(S.app.version)}).</span>` +
+      (u.mode === 'release' ? '<button class="btn primary" data-act="install">Install and restart</button>' : '<span class="fine">Dev copy: update it with git pull.</span>');
+  } else if (u.error) html = `${now}. <span title="${esc(u.error)}">The last check failed.</span></span><button class="btn" data-act="check">Try again</button>`;
+  else if (u.checkedAt) html = `${now}, the newest. Checked ${ago(u.checkedAt)}.</span><button class="btn" data-act="check">Check now</button>`;
+  else html = `${now}.</span><button class="btn" data-act="check">Check for updates</button>`;
+  if (S.terminals.outdated) html += '<span class="fine" style="width:100%">A terminal engine update is waiting; it applies once every session in the app has ended.</span>';
   $('#update').html = html;
   $('#optStartup').checked = S.settings.startWithWindows;
   $('#optAuto').checked = S.settings.autoUpdate;
+}
+
+const SAMPLE = [
+  ['fg', '> '], ['fg', 'fix the login bug in server.js\n'],
+  ['cur', '● '], ['fg', 'Reading server.js…\n'],
+  ['dim', '  ⎿ 214 lines\n'],
+  ['fg', '$ npm test '], ['cur', '█'],
+];
+
+function renderSettings() {
+  for (const b of document.querySelectorAll('#themeSeg button')) b.classList.toggle('on', b.dataset.v === look.theme);
+  const t = look.terminal;
+  $('#presets').html = TERM_PRESETS.map((p) => `<button type="button" class="preset${t.preset === p.id ? ' on' : ''}" data-act="term-preset" data-v="${p.id}">
+      <span class="pv" style="background:${p.background};color:${p.foreground}"><i style="color:${p.cursor}">●</i> claude<br>&gt; hello</span>${esc(p.name)}</button>`).join('') +
+    (t.preset === 'custom' ? `<button type="button" class="preset on" data-act="term-preset" data-v="custom">
+      <span class="pv" style="background:${t.background};color:${t.foreground}"><i style="color:${t.cursor}">●</i> claude<br>&gt; hello</span>Custom</button>` : '');
+  $('#tcBg').value = t.background;
+  $('#tcFg').value = t.foreground;
+  $('#tcCur').value = t.cursor;
+  if (!$('#tcSize').options.length) {
+    $('#tcSize').innerHTML = [11, 12, 13, 14, 15, 16, 18, 20].map((n) => `<option value="${n}">${n}</option>`).join('');
+  }
+  $('#tcSize').value = String(t.fontSize);
+  const dim = mix(t.background, t.foreground, 0.55);
+  const sample = $('#termSample');
+  sample.style.background = t.background;
+  sample.style.fontSize = t.fontSize + 'px';
+  sample.html = SAMPLE.map(([k, s]) => `<span style="color:${k === 'cur' ? t.cursor : k === 'dim' ? dim : t.foreground}">${esc(s)}</span>`).join('');
+}
+
+function openSettings() {
+  renderUpdates();
+  renderSettings();
+  if (!$('#setDlg').open) $('#setDlg').showModal();
+}
+
+async function checkUpdates(announce) {
+  if (S.update && S.update.busy) return;
+  S.update = { ...S.update, busy: true };
+  renderUpdIcon();
+  if ($('#setDlg').open) renderUpdates();
+  const r = await act('/api/update/check', {});
+  if (!announce || !r) return;
+  if (r.available && S.settings.autoUpdate && r.mode === 'release') toast(`Installing ${r.latest}; the app restarts by itself`);
+  else if (r.available) { toast(`${r.latest} is ready`); openSettings(); }
+  else if (r.error) toast('Update check failed: ' + r.error, true);
+  else toast(`Up to date (v${S.app.version})`);
+}
+
+function setTerminal(changes) {
+  look.terminal = { ...look.terminal, ...changes };
+  saveLook(() => ({ terminal: look.terminal }));
 }
 
 // ---- project menu and editor -----------------------------------------------------------
@@ -1462,6 +1696,8 @@ function render() {
   if (!S) return;
   renderHeader();
   renderSide();
+  renderUpdIcon();
+  if ($('#setDlg').open) renderUpdates();
   if (view === 'term') return renderTermBar();
   if (view === 'context') return renderPlanUsage();
   if (view !== 'overview') return;
@@ -1470,7 +1706,6 @@ function render() {
   if (!editing) renderLive();
   renderClosed();
   renderHistory();
-  renderFooter();
 }
 
 let refreshing = null;
@@ -1480,6 +1715,7 @@ function refresh() {
     try {
       S = await api('/api/state');
       offline = false;
+      lookFromState();
       hostUp = S.terminals.up || !S.terminals.list.length;
       // A terminal the host no longer has (closed in another window) leaves the screen too.
       for (const id of [...terms.keys()]) {
@@ -1558,7 +1794,21 @@ document.addEventListener('click', async (e) => {
     case 'kill-yes': clearTimeout(disarmTimer); endArmed = null; await act('/api/term/kill', { id: current }, 'Ending session…'); break;
     case 'forget': await act('/api/term/forget', { id: b.dataset.tid }); break;
     case 'more': histLimit += 15; renderHistory(); break;
-    case 'check': S.update = { ...S.update, busy: true }; renderFooter(); act('/api/update/check', {}); break;
+    case 'check': await checkUpdates(false); break;
+    case 'upd-icon':
+      // With an update waiting (or a failed check to look at) the icon opens Settings; otherwise it checks.
+      if (S.update && (S.update.available || S.update.error) && !S.update.busy) { openSettings(); if (S.update.error) await checkUpdates(true); }
+      else await checkUpdates(true);
+      break;
+    case 'settings': openSettings(); break;
+    case 'set-close': $('#setDlg').close(); break;
+    case 'theme': look.theme = b.dataset.v; saveLook(() => ({ theme: look.theme })); break;
+    case 'term-preset': {
+      const p = TERM_PRESETS.find((x) => x.id === b.dataset.v);
+      if (p) setTerminal({ preset: p.id, background: p.background, foreground: p.foreground, cursor: p.cursor });
+      break;
+    }
+    case 'term-reset': look.terminal = { ...TERM_DEFAULT }; saveLook(() => ({ terminal: null }), 'Terminal back to the default look'); break;
     case 'install':
       b.disabled = true;
       if (await act('/api/update/install', {}, 'Installing; sessions in the app keep running')) setTimeout(() => location.reload(), 6000);
@@ -1663,6 +1913,11 @@ $('#overview').addEventListener('scroll', closePmenu);
 $('#search').addEventListener('input', () => { histLimit = 15; if (S) renderHistory(); });
 for (const id of ['#skillSearch', '#skillSource', '#skillKind']) $(id).addEventListener('input', renderSkills);
 $('#wikiSearch').addEventListener('input', renderWiki);
+for (const [sel, key] of [['#tcBg', 'background'], ['#tcFg', 'foreground'], ['#tcCur', 'cursor']]) {
+  $(sel).addEventListener('input', (e) => setTerminal({ preset: 'custom', [key]: e.target.value.toLowerCase() }));
+}
+$('#tcSize').addEventListener('change', (e) => setTerminal({ fontSize: Number(e.target.value) }));
+$('#setDlg').addEventListener('click', (e) => { if (e.target === $('#setDlg')) $('#setDlg').close(); });
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? 'Starts with Windows' : 'Will not start with Windows'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
