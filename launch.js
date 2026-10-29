@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const PORT = Number(process.env.CS_PORT || 8930);
 const URL = `http://127.0.0.1:${PORT}/`;
 const background = process.argv.includes('--background');
+const WIN = process.platform === 'win32';
 
 function ping() {
   return new Promise((resolve) => {
@@ -33,7 +34,20 @@ function startServer() {
   child.unref();
 }
 
+// A Chromium browser opens the dashboard as its own app window.
+const MAC_BROWSERS = [
+  'Google Chrome.app/Contents/MacOS/Google Chrome',
+  'Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  'Brave Browser.app/Contents/MacOS/Brave Browser',
+  'Chromium.app/Contents/MacOS/Chromium',
+];
+
 function findBrowser() {
+  if (!WIN) {
+    const roots = ['/Applications', path.join(require('os').homedir(), 'Applications')];
+    for (const b of MAC_BROWSERS) for (const r of roots) if (fs.existsSync(path.join(r, b))) return path.join(r, b);
+    return null;
+  }
   const pf = process.env.ProgramFiles || 'C:\\Program Files';
   const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
   const local = process.env.LOCALAPPDATA || '';
@@ -50,9 +64,12 @@ function openWindow() {
   const browser = findBrowser();
   const child = browser
     ? spawn(browser, [`--app=${URL}`, '--window-size=1180,860'], { detached: true, stdio: 'ignore' })
-    : spawn('cmd.exe', ['/c', 'start', '', URL], { detached: true, stdio: 'ignore', windowsHide: true });
+    : WIN
+      ? spawn('cmd.exe', ['/c', 'start', '', URL], { detached: true, stdio: 'ignore', windowsHide: true })
+      : spawn('open', [URL], { detached: true, stdio: 'ignore' });
+  child.on('error', () => {});
   child.unref();
-  if (browser) giveWindowIcon();
+  if (browser && WIN) giveWindowIcon();
 }
 
 // The browser groups its app windows under its own taskbar icon; this gives the

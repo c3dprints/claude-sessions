@@ -1,6 +1,6 @@
 # Claude Sessions
 
-A local app for every Claude Code session on this PC: run sessions in built-in terminals, see the ones in Windows Terminal, and reopen anything that got closed by accident in one click.
+A local app for every Claude Code session on this PC or Mac: run sessions in built-in terminals, see the ones in Windows Terminal (or Terminal on a Mac), and reopen anything that got closed by accident in one click.
 
 ## What it does
 
@@ -47,6 +47,27 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
 This clones the repo to `%LOCALAPPDATA%\ClaudeSessions\app`, checks out the newest release tag, and puts a **Claude Sessions** shortcut on the Desktop. Run it again any time to repair the install.
+
+### macOS
+
+```bash
+bash scripts/install-mac.sh
+```
+
+Same idea: clones to `~/Library/Application Support/ClaudeSessions/app`, checks out the newest release tag and builds **Claude Sessions.app** into `~/Applications`. To run a dev checkout instead, run `scripts/build-mac.sh` inside it. Needs Node 18+ and the Xcode command line tools (`xcode-select --install`) for `cc` and `git`.
+
+On a Mac the Windows parts have stand-ins:
+
+| Windows | macOS |
+|---|---|
+| `native/conpty-bridge.cs` (csc.exe) | `native/pty-bridge.c` (cc, `forkpty`), into `~/Library/Application Support/ClaudeSessions/bin` |
+| Named pipe to the session host | Unix socket `host.sock` in the same folder, mode 600, plus the token |
+| `tasklist` | `ps -axo pid=,comm=` |
+| Windows Terminal tabs (`wt.exe`, UI Automation) | Terminal.app tabs via `osascript`; jumping finds the tab by tty in Terminal or iTerm2 (asks for Automation permission once) |
+| Start with Windows shortcut | LaunchAgent `~/Library/LaunchAgents/com.c3dprints.claude-sessions.plist` |
+| Ctrl+C / Ctrl+V, Alt+V for images | Cmd+C / Cmd+V, Ctrl+V for images |
+
+The dashboard opens as an app window in Chrome, Edge, Brave or Chromium, or in the default browser if none is installed.
 
 ## Updates
 

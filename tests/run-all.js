@@ -19,6 +19,11 @@ const library = require('../lib/library');
 const usage = require('../lib/usage');
 const { HostClient } = require('../lib/hostclient');
 
+const WIN = process.platform === 'win32';
+// Harmless stand-ins for claude that print a marker, then wait for typing.
+const shellCmd = (marker) => (WIN ? `cmd.exe /q /k echo ${marker}` : `/bin/sh -c 'echo ${marker}; exec /bin/sh'`);
+const testPipe = (name) => (WIN ? `\\\\.\\pipe\\${name}-${process.pid}` : path.join(os.tmpdir(), `${name}-${process.pid}.sock`));
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, ms = 8000) {
   const end = Date.now() + ms;
@@ -113,6 +118,11 @@ function request(port, method, p, { body, headers = {} } = {}) {
     assert.deepStrictEqual([...pids], [94796]);
   });
 
+  await check('ps parsing keeps only claude', () => {
+    const pids = sessions.parsePs('  1470 claude\n 2001 /Users/a/.npm-global/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe\n   5 /usr/local/bin/node\n  77 claude-helper\n');
+    assert.deepStrictEqual([...pids], [1470, 2001]);
+  });
+
   await check('prompt text skips tool results, wrappers, sidechains, non-human', () => {
     assert.strictEqual(sessions.promptText({ type: 'user', message: { content: 'hi' } }), 'hi');
     assert.strictEqual(sessions.promptText({ type: 'user', message: { content: [{ type: 'tool_result' }] } }), null);
@@ -185,7 +195,16 @@ function request(port, method, p, { body, headers = {} } = {}) {
     assert.strictEqual(fs.statSync(path.join(d, 'state.json')).mtimeMs, m);
   });
 
-  await check('wt args: resume command, ; escaped, trailing slash trimmed', () => {
+  if (!WIN) await check('Terminal.app args: folder quoted for sh, trailing slash trimmed', () => {
+    const odd = path.join(fx.dir, "it's here");
+    fs.mkdirSync(odd);
+    const args = terminal.claudeTabArgs(odd + '/', ID1);
+    assert.strictEqual(args[0], '-e');
+    assert.strictEqual(args[2], `cd '${odd.replace("'", "'\\''")}' && claude --resume ${ID1}`);
+    assert.ok(terminal.claudeTabArgs(fx.work).pop().endsWith('&& claude'));
+  });
+
+  if (WIN) await check('wt args: resume command, ; escaped, trailing slash trimmed', () => {
     const semi = path.join(fx.dir, 'a;b');
     fs.mkdirSync(semi);
     const args = terminal.claudeTabArgs(semi + '\\', ID1);
@@ -198,7 +217,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
   await check('wt args: refuse bad ids and missing or relative folders', () => {
     assert.throws(() => terminal.claudeTabArgs(fx.work, 'x; rm -rf'), /bad session id/);
     assert.throws(() => terminal.claudeTabArgs(path.join(fx.dir, 'nope'), ID1), /no longer exists/);
-    assert.throws(() => terminal.claudeTabArgs('relative\\dir', ID1), /unknown folder/);
+    assert.throws(() => terminal.claudeTabArgs(WIN ? 'relative\\dir' : 'relative/dir', ID1), /unknown folder/);
   });
 
   await check('updater: semver ordering, not string ordering', () => {
@@ -353,18 +372,18 @@ function request(port, method, p, { body, headers = {} } = {}) {
   // ---- session host + ConPTY bridge ----------------------------------------
   const hostRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-host-'));
   const hostData = path.join(hostRoot, 'data');
-  const hostPipe = `\\\\.\\pipe\\cs-test-host-${process.pid}`;
+  const hostPipe = testPipe('cs-test-host');
   const hc = new HostClient({ dataDir: hostData, pipe: hostPipe });
   try {
     await check('host: starts, runs a command in a pseudo console, takes typing', async () => {
       await hc.ensure();
       let out = '';
       hc.on('event', (m) => { if (m.t === 'out') out += Buffer.from(m.data, 'base64').toString('utf8'); });
-      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: 'cmd.exe /q /k echo HOST-READY', cols: 100, rows: 30 });
+      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: shellCmd('HOST-READY'), cols: 100, rows: 30 });
       const id = r.session.id;
       await until(() => strip(out).includes('HOST-READY'));
       await until(() => hc.list().find((s) => s.id === id).pid > 0);
-      await hc.request({ t: 'input', id, data: 'echo typed-%COMPUTERNAME%\r' });
+      await hc.request({ t: 'input', id, data: WIN ? 'echo typed-%COMPUTERNAME%\r' : 'echo typed-$((6*7))\r' });
       await until(() => /typed-\w+/.test(strip(out)));
       await hc.request({ t: 'resize', id, cols: 140, rows: 40 });
       const rep = await hc.request({ t: 'replay', id });
@@ -374,7 +393,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
     });
 
     await check('host: a second dashboard connection sees the running sessions (survives restarts)', async () => {
-      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: 'cmd.exe /q /k echo AGAIN', cols: 80, rows: 24 });
+      const r = await hc.request({ t: 'spawn', cwd: fx.work, command: shellCmd('AGAIN'), cols: 80, rows: 24 });
       const other = new HostClient({ dataDir: hostData, pipe: hostPipe });
       await other.attach();
       assert.ok(other.up);
@@ -399,7 +418,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
   const PORT = 8931;
   const data = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-data-')), 'data');
   fs.mkdirSync(data);
-  const httpPipe = `\\\\.\\pipe\\cs-test-http-${process.pid}`;
+  const httpPipe = testPipe('cs-test-http');
   // What a server leaves behind right before it installs v0.0.1 and restarts.
   fs.writeFileSync(path.join(data, 'state.json'), JSON.stringify({ update: { current: '0.0.0', latest: 'v0.0.1', available: true, mode: 'release' } }));
   // Hold the port briefly, like an old server mid-restart, so the server has to retry.
@@ -409,7 +428,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: {
       ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
-      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: 'cmd.exe /q /k echo APP-READY',
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'),
     },
     stdio: 'ignore', windowsHide: true,
   });
@@ -489,7 +508,7 @@ function request(port, method, p, { body, headers = {} } = {}) {
       assert.ok(!s.history.some((h) => h.sessionId === ID2), 'closed sessions are not repeated in history');
       const wt = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID2, where: 'terminal' }, headers: H });
       assert.strictEqual(wt.status, 200);
-      assert.strictEqual(wt.json.args[wt.json.args.length - 1], `claude --resume ${ID2}`);
+      assert.ok(wt.json.args[wt.json.args.length - 1].endsWith(`claude --resume ${ID2}`));
       const inApp = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID2 }, headers: H });
       assert.strictEqual(inApp.status, 200, JSON.stringify(inApp.json));
       assert.ok(inApp.json.id, 'reopening defaults to an in-app terminal');

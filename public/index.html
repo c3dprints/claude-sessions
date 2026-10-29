@@ -392,7 +392,7 @@
     <div id="sideProjects"></div>
     <div class="side-h">In this app</div>
     <div id="sideApp"></div>
-    <div class="side-h">In Windows Terminal</div>
+    <div class="side-h" id="sideWtHead">In Windows Terminal</div>
     <div id="sideWt"></div>
    </div>
     <details class="menu side-new" id="newMenu">
@@ -528,7 +528,7 @@
       <h4>Updates</h4>
       <div class="upd-line" id="update"></div>
       <label class="switch"><input type="checkbox" id="optAuto"> Install updates automatically</label>
-      <label class="switch"><input type="checkbox" id="optStartup"> Start with Windows</label>
+      <label class="switch"><input type="checkbox" id="optStartup"> <span id="optStartupLabel">Start with Windows</span></label>
       <p class="note">Installing restarts only the dashboard. Sessions in the app keep running.</p>
     </section>
 
@@ -572,6 +572,10 @@ Object.defineProperty(Element.prototype, 'html', {
   set(v) { if (this._html !== v) { this._html = v; this.innerHTML = v; } },
 });
 let S = null;
+// The app only ever runs on this computer, so the browser's platform is the server's.
+const MAC = /Mac/.test(navigator.platform || navigator.userAgent);
+const WT = MAC ? 'Terminal' : 'Windows Terminal';
+const STARTUP = MAC ? 'Start at login' : 'Start with Windows';
 let editing = null;    // sessionId being renamed; live cards are not redrawn while set
 let histLimit = 15;
 let offline = false;
@@ -607,7 +611,7 @@ function clock(t) {
     ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
-function home(p) { return p ? String(p).replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~') : 'unknown folder'; }
+function home(p) { return p ? String(p).replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~').replace(/^\/Users\/[^/]+/, '~') : 'unknown folder'; }
 function label(s) { return s.nickname || s.title || s.firstPrompt || s.name || 'Untitled session'; }
 function ktok(n) { return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 1e5 ? 0 : 1) + 'k' : String(Math.round(n)); }
 function lvl(p) { return p >= 80 ? 'lvl-high' : p >= 50 ? 'lvl-warn' : 'lvl-ok'; }
@@ -887,7 +891,7 @@ function getTerm(id) {
   el.className = 'term-pane';
   $('#termStack').appendChild(el);
   const term = new Terminal({
-    fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+    fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace',
     fontSize: look.terminal.fontSize,
     cursorBlink: true,
     scrollback: 10000,
@@ -900,6 +904,15 @@ function getTerm(id) {
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true;
     const k = e.key.toLowerCase();
+    // macOS: Cmd+C copies, Cmd+V pastes through the browser, Ctrl+C always reaches Claude.
+    if (MAC) {
+      if (e.metaKey && k === 'c') {
+        if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+        return false;
+      }
+      if (e.metaKey && k === 'v') return false;
+      return true;
+    }
     // Ctrl+C copies when text is selected, otherwise it goes to Claude as usual.
     if (e.ctrlKey && k === 'c' && (e.shiftKey || term.hasSelection())) {
       if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
@@ -910,13 +923,13 @@ function getTerm(id) {
     if (e.ctrlKey && k === 'v') return false;
     return true;
   });
-  // An image on the clipboard has no text to paste; Claude Code reads it itself on Alt+V.
+  // An image on the clipboard has no text to paste; Claude Code reads it itself on Alt+V (Ctrl+V on macOS).
   el.addEventListener('paste', (e) => {
     const cd = e.clipboardData;
     if (cd && !cd.getData('text') && [...cd.items].some((i) => i.kind === 'file')) {
       e.preventDefault();
       e.stopPropagation();
-      sendInput(id, '\x1bv');
+      sendInput(id, MAC ? '\x16' : '\x1bv');
     }
   }, true);
   t = { term, fit, el, sent: '' };
@@ -1161,7 +1174,7 @@ function renderSide() {
   const wt = S.live.filter((s) => !s.appId);
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
-    return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its Windows Terminal tab">
+    return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its ${WT} tab">
       ${pbarOf(s)}<span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
       <button class="btn small ghost" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'Move this session into the app' : 'Can move once it is idle'}">Move</button></div>`;
   }).join('') || '<div class="side-empty">None.</div>';
@@ -1224,10 +1237,10 @@ function renderLive() {
     const buttons = s.appId
       ? `<button class="btn primary" data-act="open" data-tid="${esc(s.appId)}">Open</button>`
       : `<button class="btn primary" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>
-         <button class="btn" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'End it in Windows Terminal and continue it here' : 'Can move once it is idle'}">Move here</button>`;
+         <button class="btn" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? `End it in ${WT} and continue it here` : 'Can move once it is idle'}">Move here</button>`;
     return `<div class="card ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}">
       <div class="row"><span class="status"><span class="dot"></span>${st.text} <span class="since">· ${dur(s.statusSince)}</span></span>
-        <span class="where">${s.appId ? 'in app' : 'Windows Terminal'}</span></div>
+        <span class="where">${s.appId ? 'in app' : WT}</span></div>
       ${titleHtml}
       <div class="meta">${pchip(s)}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span><span>opened ${ago(s.startedAt)}</span>${s.kind !== 'interactive' ? `<span>${esc(s.kind)}</span>` : ''}</div>
       ${s.lastPrompt ? `<div class="prompt" title="${esc(s.lastPrompt)}">${esc(s.lastPrompt)}</div>` : ''}
@@ -1249,7 +1262,7 @@ function itemHtml(s, closed) {
     <div class="t">${esc(label(s))}</div>
     <div class="a">
       <button class="btn${closed ? ' primary' : ''}" data-act="resume" data-id="${esc(s.sessionId)}">Reopen</button>
-      <button class="btn ghost" data-act="resume-wt" data-id="${esc(s.sessionId)}" title="Reopen in Windows Terminal instead">Terminal</button>
+      <button class="btn ghost" data-act="resume-wt" data-id="${esc(s.sessionId)}" title="Reopen in ${WT} instead">Terminal</button>
       ${closed ? `<button class="btn ghost" data-act="dismiss" data-id="${esc(s.sessionId)}" title="Remove from this list">✕</button>` : ''}
     </div>
     <div class="s">${pchip(s)}${when}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span>${p ? `<span class="p" title="${esc(p)}">${esc(p)}</span>` : ''}</div>
@@ -1830,7 +1843,7 @@ document.addEventListener('click', async (e) => {
       if (!r) b.disabled = false;
       break;
     }
-    case 'resume-wt': b.disabled = true; await act('/api/resume', { sessionId: id, where: 'terminal' }, 'Reopening in Windows Terminal…'); break;
+    case 'resume-wt': b.disabled = true; await act('/api/resume', { sessionId: id, where: 'terminal' }, `Reopening in ${WT}…`); break;
     case 'dismiss': act('/api/closed/dismiss', { sessionId: id }); break;
     case 'rename': editing = id; renderLive(); break;
     case 'new': $('#newMenu').open = false; await openNew('/api/new', { cwd: b.dataset.cwd }, 'Starting Claude…'); break;
@@ -1968,7 +1981,9 @@ for (const [sel, key] of [['#tcBg', 'background'], ['#tcFg', 'foreground'], ['#t
 }
 $('#tcSize').addEventListener('change', (e) => setTerminal({ fontSize: Number(e.target.value) }));
 $('#setDlg').addEventListener('click', (e) => { if (e.target === $('#setDlg')) $('#setDlg').close(); });
-$('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? 'Starts with Windows' : 'Will not start with Windows'));
+$('#sideWtHead').textContent = 'In ' + WT;
+$('#optStartupLabel').textContent = STARTUP;
+$('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? (MAC ? 'Starts at login' : 'Starts with Windows') : (MAC ? 'Will not start at login' : 'Will not start with Windows')));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
 function route() {

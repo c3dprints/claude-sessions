@@ -3,7 +3,7 @@
 // own process so that restarting the dashboard (an update, a crash) never ends
 // a running Claude session. The dashboard server talks to it over a named pipe.
 //
-//   node ptyhost.js <conpty-bridge.exe>
+//   node ptyhost.js <conpty-bridge.exe | pty-bridge>
 //
 // Protocol: JSON lines. The first message must be {t:'auth', token}.
 // Requests carry `rid` and get {t:'res', rid, ok, ...}. Events are broadcast
@@ -12,12 +12,12 @@
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const platform = require('./lib/platform');
 
-const PIPE = process.env.CS_HOST_PIPE || `\\\\.\\pipe\\claude-sessions-host-${os.userInfo().username}`;
-const DATA_DIR = process.env.CS_DATA || path.join(process.env.LOCALAPPDATA || os.homedir(), 'ClaudeSessions', 'data');
+const PIPE = platform.hostPipe();
+const DATA_DIR = platform.dataDir();
 const VERSION = process.env.CS_HOST_VERSION || 'dev';
 const BRIDGE = process.argv[2];
 const BUFFER_MAX = 2 * 1024 * 1024;       // scrollback kept per session for reconnecting windows
@@ -199,5 +199,23 @@ setInterval(() => {
   for (const s of sessions.values()) if (s.exited && now - s.endedAt > EXITED_KEEP_MS) sessions.delete(s.id);
 }, 60000).unref();
 
-server.on('error', (e) => { log(`pipe failed: ${e.message}`); process.exit(1); });
-server.listen(PIPE, () => log(`host ${VERSION} listening on ${PIPE} with ${BRIDGE}`));
+function listen() {
+  server.listen(PIPE, () => {
+    if (!platform.WIN) try { fs.chmodSync(PIPE, 0o600); } catch { /* the token still guards it */ }
+    log(`host ${VERSION} listening on ${PIPE} with ${BRIDGE}`);
+  });
+}
+
+// A Unix socket file outlives a host that crashed. Remove it only when nobody answers on it.
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE' && !platform.WIN && !listen.retried) {
+    listen.retried = true;
+    const probe = net.connect(PIPE);
+    probe.once('connect', () => { probe.destroy(); log('another host is already listening'); process.exit(1); });
+    probe.once('error', () => { try { fs.unlinkSync(PIPE); } catch { /* gone */ } listen(); });
+    return;
+  }
+  log(`pipe failed: ${e.message}`);
+  process.exit(1);
+});
+listen();

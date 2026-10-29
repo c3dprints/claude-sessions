@@ -2,6 +2,18 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.0 (2026-10-29)
+
+Runs on macOS too. Windows works as before.
+
+- **Built-in terminals** on a Mac use a small C pseudo terminal bridge (`native/pty-bridge.c`, same protocol as the ConPTY one), compiled on first use with the Xcode command line tools' `cc`. Sessions run in the login shell, so PATH matches a Terminal window. The session host listens on a Unix socket (mode 600) in the data folder.
+- **Terminal** stands in for Windows Terminal: reopen and new session open a Terminal.app tab, the sidebar jumps to a session's tab in Terminal or iTerm2 (found by its tty), and **Move here** ends the Terminal session and continues it in the app.
+- **Start at login** (a LaunchAgent) replaces Start with Windows. App data lives in `~/Library/Application Support/ClaudeSessions`.
+- Cmd+C copies and Cmd+V pastes; Ctrl+C always reaches Claude; an image on the clipboard is sent as Ctrl+V, the key Claude Code reads images on in macOS.
+- `scripts/build-mac.sh` builds **Claude Sessions.app** into `~/Applications`; `scripts/install-mac.sh` installs from the newest release tag, like `install.ps1`.
+- The status line command quotes its paths (the Mac data folder has a space) and names node in full.
+- The wiki folder list starts empty on a Mac (the default `\\Mobius\Chris` share is a Windows path).
+
 ## 1.4.1 (2026-10-29)
 
 - **+ New session** moved from the top right to the bottom left of the sidebar, just above Settings. Its folder list opens upward.

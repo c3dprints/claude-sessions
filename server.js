@@ -19,12 +19,13 @@ const library = require('./lib/library');
 const usage = require('./lib/usage');
 const { Store, projectOf } = require('./lib/store');
 const { HostClient } = require('./lib/hostclient');
+const platform = require('./lib/platform');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
 const APP_DIR = __dirname;
 const CLAUDE_DIR = process.env.CS_CLAUDE_DIR || path.join(os.homedir(), '.claude');
-const DATA_DIR = process.env.CS_DATA || path.join(process.env.LOCALAPPDATA || os.homedir(), 'ClaudeSessions', 'data');
+const DATA_DIR = platform.dataDir();
 const POLL_MS = 3000;
 const UPDATE_EVERY_MS = 6 * 3600000;
 const HISTORY_TTL_MS = 15000;
@@ -99,7 +100,7 @@ function snapshot() {
   const history = getHistory(new Set([...liveIds, ...closedIds]));
   const withNick = (s) => ({ ...s, nickname: nick[s.sessionId] || null, project: projectOf(store.state, s) });
   return {
-    app: { name: 'Claude Sessions', version: pkg.version },
+    app: { name: 'Claude Sessions', version: pkg.version, platform: process.platform },
     now: Date.now(),
     live: live.map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) })),
     closed: closed.map(withNick),
@@ -218,17 +219,26 @@ const PROJECT_COLORS = ['#d97757', '#5b9cf6', '#4fbf8a', '#e8b04b', '#b07ce8', '
 
 let claudeExePath = null;
 
+// On macOS the app may be started from Finder with a bare PATH, so the usual
+// install folders are checked too; the bridge's login shell finds anything else.
 function claudeExe() {
   if (claudeExePath && fs.existsSync(claudeExePath)) return claudeExePath;
-  const dirs = [path.join(os.homedir(), '.local', 'bin'), ...String(process.env.PATH || '').split(';')];
-  claudeExePath = dirs.filter(Boolean).map((d) => path.join(d, 'claude.exe')).find((p) => fs.existsSync(p)) || null;
-  if (!claudeExePath) throw fail(500, 'claude.exe was not found (looked in ~/.local/bin and PATH)');
+  const home = os.homedir();
+  const dirs = platform.WIN
+    ? [path.join(home, '.local', 'bin'), ...String(process.env.PATH || '').split(';')]
+    : [path.join(home, '.local', 'bin'), path.join(home, '.claude', 'local'), path.join(home, '.npm-global', 'bin'),
+      '/opt/homebrew/bin', '/usr/local/bin', ...String(process.env.PATH || '').split(':')];
+  const name = platform.WIN ? 'claude.exe' : 'claude';
+  claudeExePath = dirs.filter(Boolean).map((d) => path.join(d, name)).find((p) => fs.existsSync(p)) || null;
+  if (!claudeExePath && platform.WIN) throw fail(500, 'claude.exe was not found (looked in ~/.local/bin and PATH)');
   return claudeExePath;
 }
 
 function claudeCommand(resumeId) {
   if (TEST_MODE && process.env.CS_CLAUDE_CMD) return process.env.CS_CLAUDE_CMD;
-  return `"${claudeExe()}"` + (resumeId ? ` --resume ${resumeId}` : '');
+  const exe = claudeExe();
+  const cmd = platform.WIN ? `"${exe}"` : exe ? terminal.shQuote(exe) : 'claude';
+  return cmd + (resumeId ? ` --resume ${resumeId}` : '');
 }
 
 function size(b) {
@@ -474,8 +484,13 @@ const routes = {
     if (appTerminals().some((t) => t.pid === s.pid && !t.exited)) throw fail(409, 'already in the app');
     if (s.status !== 'idle') throw fail(409, 'wait until it is idle, then move it');
     if (!TEST_MODE) {
-      await new Promise((resolve) => execFile('taskkill', ['/PID', String(s.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
-      if (!(await processGone(s.pid, 8000))) throw fail(500, 'the session did not close in Windows Terminal');
+      if (platform.WIN) {
+        await new Promise((resolve) => execFile('taskkill', ['/PID', String(s.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
+      } else {
+        try { process.kill(s.pid, 'SIGTERM'); } catch { /* already gone */ }
+        if (!(await processGone(s.pid, 5000))) try { process.kill(s.pid, 'SIGKILL'); } catch { /* gone */ }
+      }
+      if (!(await processGone(s.pid, 8000))) throw fail(500, `the session did not close in ${platform.WIN ? 'Windows Terminal' : 'Terminal'}`);
       live = live.filter((x) => x.pid !== s.pid);
     }
     log(`moving ${s.sessionId} from Windows Terminal into the app`);
