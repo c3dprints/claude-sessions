@@ -762,8 +762,41 @@ const TERM_PRESETS = [
   { id: 'forest', name: 'Forest', background: '#0f1a14', foreground: '#d3e8d8', cursor: '#4fbf8a' },
   { id: 'plum', name: 'Plum', background: '#1a1222', foreground: '#ece0f5', cursor: '#b07ce8' },
   { id: 'ember', name: 'Ember', background: '#1c1210', foreground: '#f3e3d8', cursor: '#e8b04b' },
-  { id: 'paper', name: 'Paper (light)', background: '#fbfaf7', foreground: '#24292f', cursor: '#d97757' },
+  { id: 'paper', name: 'Paper', light: true, background: '#fbfaf7', foreground: '#24292f', cursor: '#d97757' },
 ];
+// Well-known themes with their full 16-color palettes, taken from each theme's own repo
+// (MIT, except Tokyo Night: Apache-2.0). ansi = black red green yellow blue magenta cyan white,
+// then the bright eight. Where the published bright black matched the background it is
+// replaced with the usual readable grey (Solarized Dark, One Half Dark, Everforest).
+//   Dracula github.com/dracula/windows-terminal · Nord github.com/nordtheme/alacritty
+//   Solarized github.com/altercation/solarized · Gruvbox github.com/morhetz/gruvbox
+//   One Half github.com/sonph/onehalf · Tokyo Night github.com/folke/tokyonight.nvim
+//   Catppuccin github.com/catppuccin/windows-terminal · Rosé Pine github.com/rose-pine/windows-terminal
+//   GitHub github.com/primer/github-vscode-theme · Everforest github.com/sainnhe/everforest
+//   Kanagawa github.com/rebelot/kanagawa.nvim
+const THEME_LIST = [
+  ['dracula', 'Dracula', 0, '#282a36 #f8f8f2 #f8f8f2 #44475a', '#21222c #ff5555 #50fa7b #f1fa8c #bd93f9 #ff79c6 #8be9fd #f8f8f2 #6272a4 #ff6e6e #69ff94 #ffffa5 #d6acff #ff92df #a4ffff #ffffff'],
+  ['nord', 'Nord', 0, '#2e3440 #d8dee9 #d8dee9 #4c566a', '#3b4252 #bf616a #a3be8c #ebcb8b #81a1c1 #b48ead #88c0d0 #e5e9f0 #4c566a #bf616a #a3be8c #ebcb8b #81a1c1 #b48ead #8fbcbb #eceff4'],
+  ['tokyo-night', 'Tokyo Night', 0, '#1a1b26 #c0caf5 #c0caf5 #283457', '#15161e #f7768e #9ece6a #e0af68 #7aa2f7 #bb9af7 #7dcfff #a9b1d6 #414868 #f7768e #9ece6a #e0af68 #7aa2f7 #9d7cd8 #7dcfff #c0caf5'],
+  ['catppuccin-mocha', 'Catppuccin Mocha', 0, '#1e1e2e #cdd6f4 #f5e0dc #585b70', '#45475a #f38ba8 #a6e3a1 #f9e2af #89b4fa #f5c2e7 #94e2d5 #bac2de #585b70 #f38ba8 #a6e3a1 #f9e2af #89b4fa #f5c2e7 #94e2d5 #a6adc8'],
+  ['gruvbox-dark', 'Gruvbox Dark', 0, '#282828 #ebdbb2 #ebdbb2 #504945', '#282828 #cc241d #98971a #d79921 #458588 #b16286 #689d6a #a89984 #928374 #fb4934 #b8bb26 #fabd2f #83a598 #d3869b #8ec07c #ebdbb2'],
+  ['one-half-dark', 'One Half Dark', 0, '#282c34 #dcdfe4 #dcdfe4 #474e5d', '#282c34 #e06c75 #98c379 #e5c07b #61afef #c678dd #56b6c2 #dcdfe4 #5a6374 #e06c75 #98c379 #e5c07b #61afef #c678dd #56b6c2 #dcdfe4'],
+  ['solarized-dark', 'Solarized Dark', 0, '#002b36 #839496 #93a1a1 #073642', '#073642 #dc322f #859900 #b58900 #268bd2 #d33682 #2aa198 #eee8d5 #586e75 #cb4b16 #586e75 #657b83 #839496 #6c71c4 #93a1a1 #fdf6e3'],
+  ['rose-pine', 'Rosé Pine', 0, '#191724 #e0def4 #6e6a86 #403d52', '#26233a #eb6f92 #31748f #f6c177 #9ccfd8 #c4a7e7 #ebbcba #e0def4 #908caa #eb6f92 #31748f #f6c177 #9ccfd8 #c4a7e7 #ebbcba #e0def4'],
+  ['kanagawa-wave', 'Kanagawa', 0, '#1f1f28 #dcd7ba #c8c093 #2d4f67', '#090618 #c34043 #76946a #c0a36e #7e9cd8 #957fb8 #6a9589 #c8c093 #727169 #e82424 #98bb6c #e6c384 #7fb4ca #938aa9 #7aa89f #dcd7ba'],
+  ['everforest-dark', 'Everforest', 0, '#2d353b #d3c6aa #d3c6aa #543a48', '#475258 #e67e80 #a7c080 #dbbc7f #7fbbb3 #d699b6 #83c092 #d3c6aa #7a8478 #e67e80 #a7c080 #dbbc7f #7fbbb3 #d699b6 #83c092 #d3c6aa'],
+  ['github-dark', 'GitHub Dark', 0, '#0d1117 #e6edf3 #2f81f7 #142744', '#484f58 #ff7b72 #3fb950 #d29922 #58a6ff #bc8cff #39c5cf #b1bac4 #6e7681 #ffa198 #56d364 #e3b341 #79c0ff #d2a8ff #56d4dd #ffffff'],
+  ['github-light', 'GitHub Light', 1, '#ffffff #1f2328 #0969da #cee1f8', '#24292f #cf222e #116329 #4d2d00 #0969da #8250df #1b7c83 #6e7781 #57606a #a40e26 #1a7f37 #633c01 #218bff #a475f9 #3192aa #8c959f'],
+  ['catppuccin-latte', 'Catppuccin Latte', 1, '#eff1f5 #4c4f69 #dc8a78 #acb0be', '#5c5f77 #d20f39 #40a02b #df8e1d #1e66f5 #ea76cb #179299 #acb0be #acb0be #d20f39 #40a02b #df8e1d #1e66f5 #ea76cb #179299 #bcc0cc'],
+  ['solarized-light', 'Solarized Light', 1, '#fdf6e3 #657b83 #586e75 #eee8d5', '#073642 #dc322f #859900 #b58900 #268bd2 #d33682 #2aa198 #eee8d5 #002b36 #cb4b16 #586e75 #657b83 #839496 #6c71c4 #93a1a1 #fdf6e3'],
+  ['rose-pine-dawn', 'Rosé Pine Dawn', 1, '#faf4ed #575279 #9893a5 #dfdad9', '#f2e9e1 #b4637a #286983 #ea9d34 #56949f #907aa9 #d7827e #575279 #797593 #b4637a #286983 #ea9d34 #56949f #907aa9 #d7827e #575279'],
+];
+const ANSI_KEYS = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+for (const [id, name, light, main, ansi] of THEME_LIST) {
+  const [background, foreground, cursor, selection] = main.split(' ');
+  const palette = Object.fromEntries(ansi.split(' ').map((c, i) => [ANSI_KEYS[i], c]));
+  TERM_PRESETS.push({ id, name, light: !!light, popular: true, background, foreground, cursor, selection, palette });
+}
 const TERM_DEFAULT = { preset: 'default', background: '#0b0d11', foreground: '#e8eaef', cursor: '#d97757', fontSize: 13 };
 let look = { theme: 'system', terminal: { ...TERM_DEFAULT } };
 let lookTouched = 0; // time of the last change made here; the 3 second refresh leaves it alone for a moment
@@ -776,12 +809,15 @@ function mix(a, b, w) {
 function isLight(h) { const [r, g, b] = hexRgb(h); return r * 0.299 + g * 0.587 + b * 0.114 > 150; }
 
 function xtermTheme(t) {
+  // A popular theme brings its own 16 colors, as long as its colors were not changed by hand.
+  const p = TERM_PRESETS.find((x) => x.id === t.preset && x.palette && x.background === t.background);
   return {
     background: t.background, foreground: t.foreground, cursor: t.cursor,
     cursorAccent: t.background,
-    selectionBackground: mix(t.background, t.foreground, 0.28),
-    // xterm's default white and black disappear on a background of the same shade.
-    ...(isLight(t.background) ? { white: '#6e7781', brightWhite: '#8c959f' } : {}),
+    selectionBackground: (p && p.selection) || mix(t.background, t.foreground, 0.28),
+    ...(p ? p.palette
+      // xterm's default white and black disappear on a background of the same shade.
+      : isLight(t.background) ? { white: '#6e7781', brightWhite: '#8c959f' } : {}),
   };
 }
 
@@ -1278,10 +1314,17 @@ const SAMPLE = [
 function renderSettings() {
   for (const b of document.querySelectorAll('#themeSeg button')) b.classList.toggle('on', b.dataset.v === look.theme);
   const t = look.terminal;
-  $('#presets').html = TERM_PRESETS.map((p) => `<button type="button" class="preset${t.preset === p.id ? ' on' : ''}" data-act="term-preset" data-v="${p.id}">
-      <span class="pv" style="background:${p.background};color:${p.foreground}"><i style="color:${p.cursor}">●</i> claude<br>&gt; hello</span>${esc(p.name)}</button>`).join('') +
-    (t.preset === 'custom' ? `<button type="button" class="preset on" data-act="term-preset" data-v="custom">
-      <span class="pv" style="background:${t.background};color:${t.foreground}"><i style="color:${t.cursor}">●</i> claude<br>&gt; hello</span>Custom</button>` : '');
+  // A preview shows the theme's own red, green, yellow and blue when it has them.
+  const tile = (p, on, name) => {
+    const dots = p.palette ? ['red', 'green', 'yellow', 'blue', 'magenta'].map((k) => `<i style="color:${p.palette[k]}">●</i>`).join('') : `<i style="color:${p.cursor}">●</i>`;
+    return `<button type="button" class="preset${on ? ' on' : ''}" data-act="term-preset" data-v="${esc(p.id || 'custom')}"${p.light ? ' title="Light theme: also pick a light theme in Claude with /theme"' : ''}>
+      <span class="pv" style="background:${p.background};color:${p.foreground}">${dots}<br>&gt; claude</span>${esc(name || p.name)}${p.light ? ' <span class="fine">light</span>' : ''}</button>`;
+  };
+  const group = (list) => list.map((p) => tile(p, t.preset === p.id)).join('');
+  $('#presets').html =
+    `<div class="lbl" style="grid-column:1/-1">Made for this app</div>${group(TERM_PRESETS.filter((p) => !p.popular))}` +
+    (t.preset === 'custom' ? tile({ ...t, id: 'custom' }, true, 'Custom') : '') +
+    `<div class="lbl" style="grid-column:1/-1;margin-top:6px">Popular themes</div>${group(TERM_PRESETS.filter((p) => p.popular))}`;
   $('#tcBg').value = t.background;
   $('#tcFg').value = t.foreground;
   $('#tcCur').value = t.cursor;
@@ -1293,7 +1336,9 @@ function renderSettings() {
   const sample = $('#termSample');
   sample.style.background = t.background;
   sample.style.fontSize = t.fontSize + 'px';
-  sample.html = SAMPLE.map(([k, s]) => `<span style="color:${k === 'cur' ? t.cursor : k === 'dim' ? dim : t.foreground}">${esc(s)}</span>`).join('');
+  const x = xtermTheme(t);
+  const accent = x.green || t.cursor;
+  sample.html = SAMPLE.map(([k, s]) => `<span style="color:${k === 'cur' ? accent : k === 'dim' ? (x.brightBlack || dim) : t.foreground}">${esc(s)}</span>`).join('');
 }
 
 function openSettings() {

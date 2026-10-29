@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.4.0 (2026-10-29)
+
+15 popular terminal themes in Settings, each with its full 16-color palette, taken from the theme's own repo: Dracula, Nord, Tokyo Night, Catppuccin Mocha, Gruvbox Dark, One Half Dark, Solarized Dark, Rose Pine, Kanagawa, Everforest, GitHub Dark, and the light GitHub Light, Catppuccin Latte, Solarized Light and Rose Pine Dawn. All are open source (MIT; Tokyo Night Apache-2.0). Where a theme's published "bright black" matched its background (Solarized Dark, One Half Dark, Everforest) it uses the usual readable grey instead. The app's own 7 looks are listed above them.
+
 ## 1.3.1 (2026-10-29)
 
 - The app now has its own taskbar button with the Claude Sessions icon, instead of being grouped under the Edge or Chrome icon. Pinning that button to the taskbar opens the app the normal way.

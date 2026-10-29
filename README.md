@@ -13,7 +13,7 @@ A local app for every Claude Code session on this PC: run sessions in built-in t
 - **Plan usage** in the header (current 5-hour session and week, with reset times) and a **Context and usage** view that splits each session's context window like `/context`.
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
 - **Wiki**: the markdown pages in the wiki folders (`\\Mobius\Chris` by default) and Claude's auto memory, searchable.
-- **Settings** (gear, bottom left): updates, Start with Windows, app theme (System, Dark, Light) and the terminal look (presets or your own colors, text size). The icon next to **All sessions** checks for updates in one click.
+- **Settings** (gear, bottom left): updates, Start with Windows, app theme (System, Dark, Light) and the terminal look (7 own looks, 15 popular themes such as Dracula, Nord and Catppuccin, or your own colors; text size). The icon next to **All sessions** checks for updates in one click.
 - **Rename**, **New session** in a recent or project folder, **self-update**.
 
 ## How it works
