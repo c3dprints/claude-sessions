@@ -2,6 +2,14 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.7 (2026-10-30)
+
+The phone layout fits the screen.
+
+- The phone keyboard now shrinks the app instead of covering it. Android Chrome used to lay the keyboard over the page and let it pan around behind, which showed empty space around the app; now the terminal and the key row sit right above the keyboard.
+- The page no longer zooms, bounces or pulls to refresh like a web page, and its height follows the browser's address bar as it shows and hides.
+- On phones the header is one row (menu, name, plan meter), so the terminal gets more of the screen. The open, working and idle counts are left out there; the session list shows each state.
+
 ## 1.5.6 (2026-10-30)
 
 Scroll the chat on a phone.

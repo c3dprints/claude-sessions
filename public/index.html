@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Phones: the keyboard shrinks the app instead of covering it (Android otherwise lets the
+     page pan around behind the keyboard), and the app does not zoom like a web page. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content">
 <title>Claude Sessions</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -44,7 +46,9 @@
     color-scheme: light;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
+  /* The app fills the screen and never scrolls as a page; overscroll would bounce or reload it on a phone. */
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
   button { font: inherit; cursor: pointer; }
   input, select, textarea { font: inherit; color: var(--text); }
@@ -384,7 +388,11 @@
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
     #menuBtn { display: inline-flex; }
-    header { padding: 8px 12px; gap: 10px; }
+    /* One header row, so the terminal gets the height; the session list shows each state anyway. */
+    header { padding: 6px 10px; gap: 8px; flex-wrap: nowrap; }
+    header h1 { font-size: 16px; white-space: nowrap; }
+    header .chips { display: none; }
+    .meters { min-width: 0; overflow: hidden; }
     nav.side { position: fixed; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); z-index: 45; transform: translateX(-105%); transition: transform .2s; box-shadow: 0 0 40px rgba(0,0,0,.4); }
     body.side-open nav.side { transform: none; }
     body.side-open .scrim { display: block; }
