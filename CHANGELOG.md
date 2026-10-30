@@ -2,6 +2,13 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.5 (2026-10-29)
+
+The taskbar shows the app's icon again.
+
+- Since 1.5.2 the page asks for the app's own taskbar button every time it loads, but that never took effect: the helper was started without a console window, and Windows PowerShell quits at once and does nothing when started that way. The window stayed grouped under Edge (or Chrome) with the browser's icon. The server now starts the helper normally, hidden, and it works.
+- The launcher no longer starts the helper itself; it quit right after opening the window, which would have stopped the helper too. The page's own request covers it.
+
 ## 1.5.4 (2026-10-29)
 
 A paired phone stays paired.

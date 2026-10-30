@@ -7,7 +7,6 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { giveWindowIcon } = require('./lib/windowicon');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const URL = `http://127.0.0.1:${PORT}/`;
@@ -70,7 +69,7 @@ function openWindow() {
       : spawn('open', [URL], { detached: true, stdio: 'ignore' });
   child.on('error', () => {});
   child.unref();
-  if (browser) giveWindowIcon(__dirname);
+  // The page asks the server for the app's taskbar icon once it loads (lib/windowicon.js).
 }
 
 (async () => {
