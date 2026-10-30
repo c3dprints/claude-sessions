@@ -2,6 +2,12 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.6 (2026-10-30)
+
+Scroll the chat on a phone.
+
+- Swiping up or down in a terminal now scrolls Claude's chat on touch screens. Claude Code asks for mouse reports and scrolls its own chat on mouse wheel events; a mouse wheel sends those, a finger swipe sent nothing, so on a phone earlier parts of the chat could not be reached. A vertical swipe now sends the same wheel steps a mouse does (or scrolls the terminal's own history when the program is not listening to the mouse). Tapping to type works as before.
+
 ## 1.5.5 (2026-10-29)
 
 The taskbar shows the app's icon again.

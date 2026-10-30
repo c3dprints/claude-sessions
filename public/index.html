@@ -948,6 +948,7 @@ function getTerm(id) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(el);
+  touchScroll(term, el, id);
   term.onData((d) => sendInput(id, d));
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== 'keydown') return true;
@@ -983,6 +984,45 @@ function getTerm(id) {
   t = { term, fit, el, sent: '' };
   terms.set(id, t);
   return t;
+}
+
+// Claude Code turns on mouse reporting and scrolls its own chat on wheel events.
+// A mouse wheel sends those; a finger swipe sends nothing, so on a phone the chat
+// could not be scrolled. A vertical swipe becomes wheel steps here (or plain
+// scrollback when the program is not listening to the mouse).
+function touchScroll(term, el, id) {
+  let lastY = null, lastX = 0, acc = 0, moved = false;
+  const cell = () => {
+    const r = (term.element.querySelector('.xterm-screen') || el).getBoundingClientRect();
+    return { r, w: r.width / term.cols, h: r.height / term.rows };
+  };
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { lastY = null; return; }
+    lastY = e.touches[0].clientY; lastX = e.touches[0].clientX; acc = 0; moved = false;
+  }, { passive: true, capture: true });
+  el.addEventListener('touchmove', (e) => {
+    if (lastY === null || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    acc += t.clientY - lastY;
+    lastY = t.clientY;
+    const { r, w, h } = cell();
+    if (!moved && Math.abs(acc) < 8) return;
+    moved = true;
+    e.preventDefault();
+    e.stopPropagation();
+    const steps = Math.trunc(acc / h);
+    if (!steps) return;
+    acc -= steps * h;
+    // Finger down = earlier text, like any touch screen.
+    if (term.modes.mouseTrackingMode !== 'none') {
+      const col = Math.max(1, Math.min(term.cols, Math.floor((lastX - r.left) / w) + 1));
+      const row = Math.max(1, Math.min(term.rows, Math.floor((t.clientY - r.top) / h) + 1));
+      sendInput(id, `\x1b[<${steps > 0 ? 64 : 65};${col};${row}M`.repeat(Math.abs(steps)));
+    } else {
+      term.scrollLines(-steps);
+    }
+  }, { passive: false, capture: true });
+  el.addEventListener('touchend', (e) => { if (moved) e.stopPropagation(); lastY = null; }, { capture: true });
 }
 
 const inq = new Map();
