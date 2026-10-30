@@ -359,6 +359,50 @@
   .host-warn { padding: 8px 14px; background: color-mix(in srgb, var(--waiting) 16%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13px; }
   .host-warn[hidden] { display: none; }
 
+  /* groups: several terminals side by side, which can message each other */
+  #groupView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  #groupView[hidden] { display: none; }
+  .g-bar .seg button { padding: 3px 10px; font-size: 12.5px; }
+  .g-pause { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: color-mix(in srgb, var(--waiting) 16%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13px; }
+  .g-pause[hidden] { display: none; }
+  .g-pause .msg { flex: 1; }
+  .g-body { flex: 1; display: flex; min-height: 0; }
+  .g-panes { flex: 1; display: grid; min-width: 0; min-height: 0; padding: 6px; gap: 0; }
+  .g-panes.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 6px; }
+  .g-gut { background: transparent; position: relative; z-index: 2; }
+  .g-gut::after { content: ""; position: absolute; inset: 0 2px; border-radius: 2px; }
+  .g-gut:hover::after, .g-gut.on::after { background: var(--accent); }
+  .g-panes.cols .g-gut { cursor: col-resize; }
+  .g-panes.rows .g-gut { cursor: row-resize; }
+  .g-panes.rows .g-gut::after { inset: 2px 0; }
+  .gpane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--term-bg); }
+  .gpane.focus { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); }
+  .gpane.drop-ok { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .gp-head { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 10px; background: var(--surface); border-bottom: 1px solid var(--border); cursor: grab; min-width: 0; user-select: none; }
+  .gp-head .role { font-weight: 650; font-size: 13px; white-space: nowrap; }
+  .gp-head .gt { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gp-head .btn.small { padding: 2px 7px; }
+  .gp-body { flex: 1; position: relative; min-height: 0; }
+  .gp-body .term-pane { visibility: visible; pointer-events: auto; padding: 4px 2px 2px 8px; }
+  .gp-over { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 16px; background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--muted); }
+  .g-log { width: 320px; flex: none; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+  .g-log[hidden] { display: none; }
+  .g-log h4 { margin: 0; padding: 10px 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .g-msgs { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .g-msg { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg); font-size: 12.5px; }
+  .g-msg .who { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11.5px; margin-bottom: 3px; }
+  .g-msg .who b { color: var(--text); }
+  .g-msg .who .st { margin-left: auto; }
+  .g-msg .txt { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+  .g-msg.open .txt { display: block; }
+  .g-msg.wait { border-style: dashed; }
+  .g-msg.err { border-color: color-mix(in srgb, var(--closed) 50%, var(--border)); }
+  .g-list { padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .gdlg-row { display: grid; grid-template-columns: 150px 1fr auto; gap: 8px; align-items: center; }
+  .gdlg-row select { min-width: 0; width: 100%; }
+  .dlg select.search, .dlg .gdlg-row input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); font-size: 13.5px; }
+  .gchips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 50; }
   .toast.show { opacity: 1; }
   .toast.err { background: var(--closed); color: #fff; }
@@ -427,6 +471,8 @@
     <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
     <div class="side-h">Projects <button class="btn ghost" data-act="proj-new" title="New project">+</button></div>
     <div id="sideProjects"></div>
+    <div class="side-h">Groups <button class="btn ghost" data-act="group-new" title="New group: sessions side by side that can message each other">+</button></div>
+    <div id="sideGroups"></div>
     <div class="side-h">In this app</div>
     <div id="sideApp"></div>
     <div class="side-h" id="sideWtHead">In Windows Terminal</div>
@@ -529,6 +575,15 @@
       </div>
       <div class="ended-bar" id="endedBar" hidden></div>
     </section>
+
+    <section id="groupView" hidden>
+      <div class="term-bar g-bar" id="gBar"></div>
+      <div class="g-pause" id="gPause" hidden></div>
+      <div class="g-body">
+        <div class="g-panes" id="gPanes"></div>
+        <aside class="g-log" id="gLog" hidden><h4>Messages between sessions</h4><div class="g-msgs" id="gMsgs"></div></aside>
+      </div>
+    </section>
   </main>
 </div>
 <div class="scrim" data-act="side-close"></div>
@@ -569,6 +624,27 @@
   </div>
 </dialog>
 
+<dialog id="groupDlg">
+  <div class="dlg">
+    <h3 id="groupDlgTitle">New group</h3>
+    <p class="note">Sessions in a group sit side by side in one window and can message each other, for example one researching while another builds. Each one gets a role; that is the name the others use to reach it.</p>
+    <div class="row" style="gap:12px;flex-wrap:wrap">
+      <label class="f" style="flex:1;min-width:200px"><span class="lbl">Group name</span><input type="text" id="gName" maxlength="50" autocomplete="off" placeholder="Printcost redesign"></label>
+      <label class="f"><span class="lbl">Project</span><select class="search" id="gProject"></select></label>
+    </div>
+    <div class="f">
+      <span class="lbl">Sessions</span>
+      <div id="gRows" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div><button type="button" class="btn small" data-act="grow-add" id="gAddRow">+ Add a session</button></div>
+    </div>
+    <div class="btns">
+      <button type="button" class="btn danger ghost" data-act="group-delete" id="gDelete" style="margin-right:auto">Delete group</button>
+      <button type="button" class="btn" data-act="group-cancel">Cancel</button>
+      <button type="button" class="btn primary" data-act="group-save" id="gSave">Save</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="setDlg">
   <div class="dlg">
     <div class="row"><h3>Settings</h3><span class="spacer"></span><button type="button" class="btn ghost" data-act="set-close" aria-label="Close">✕</button></div>
@@ -586,6 +662,12 @@
       <label class="switch"><input type="checkbox" id="optRemote"> Use this app from my phone over Tailscale</label>
       <div id="remoteBody"></div>
       <p class="note">Only devices on your Tailscale network can reach it, and each one has to be paired here once with a code. Nothing is opened to your home network or the internet. Your phone needs the Tailscale app, signed in to the same account.</p>
+    </section>
+
+    <section class="set-sec">
+      <h4>Groups</h4>
+      <label class="switch"><input type="checkbox" id="optTeam"> Sessions in a group can message each other</label>
+      <p class="note">Sessions you start in the app get two small tools, team_info and send_message. A message is typed into the teammate's session as a prompt once it is idle, never into a question it is asking you. After 20 messages in a row with nobody typing, the group pauses until you let it continue. Turning this off affects sessions started from then on. Groups open side by side on a computer; a phone lists them.</p>
     </section>
 
     <section class="set-sec">
@@ -635,7 +717,8 @@ const STARTUP = MAC ? 'Start at login' : 'Start with Windows';
 let editing = null;    // sessionId being renamed; live cards are not redrawn while set
 let histLimit = 15;
 let offline = false;
-let view = 'overview'; // overview | context | skills | wiki | term
+let view = 'overview'; // overview | context | skills | wiki | term | group
+let curGroup = null;   // group id on screen (view 'group')
 let projFilter = null; // project shown on the overview, null = every session
 let current = null;    // in-app terminal id on screen (view 'term')
 let hostUp = true;
@@ -989,8 +1072,10 @@ function getTerm(id) {
       sendInput(id, MAC ? '\x16' : '\x1bv');
     }
   }, true);
-  t = { term, fit, el, sent: '' };
+  t = { term, fit, el, sent: '', timer: null };
   terms.set(id, t);
+  el.addEventListener('focusin', () => { lastFocus = id; markFocus(); });
+  paneSizes.observe(el);
   return t;
 }
 
@@ -1050,21 +1135,24 @@ async function flushInput(id) {
   finally { sending.delete(id); if (inq.get(id)) flushInput(id); }
 }
 
-let resizeTimer;
-function fitCurrent() {
-  if (view !== 'term' || !current) return;
-  const t = terms.get(current);
-  if (!t) return;
+// Every terminal on screen (one, or the panes of a group) is fitted to its box,
+// and the session is told its new size once the box stops changing.
+function fitTerm(id) {
+  const t = terms.get(id);
+  if (!t || !t.el.isConnected || !t.el.offsetWidth || getComputedStyle(t.el).visibility === 'hidden') return;
   try { t.fit.fit(); } catch { return; }
   const key = `${t.term.cols}x${t.term.rows}`;
   if (key === t.sent) return;
-  clearTimeout(resizeTimer);
-  const id = current;
-  resizeTimer = setTimeout(() => {
+  clearTimeout(t.timer);
+  t.timer = setTimeout(() => {
     t.sent = key;
     api('/api/term/resize', { id, cols: t.term.cols, rows: t.term.rows }).catch(() => {});
   }, 120);
 }
+function fitCurrent() { for (const id of terms.keys()) fitTerm(id); }
+const paneSizes = new ResizeObserver((list) => {
+  for (const e of list) for (const [id, t] of terms) if (t.el === e.target) fitTerm(id);
+});
 new ResizeObserver(fitCurrent).observe($('#termStack'));
 
 // Size for a terminal that does not exist yet: roughly what the terminal area fits.
@@ -1089,6 +1177,7 @@ function paneVisibility() {
   $('#skillsView').hidden = view !== 'skills';
   $('#wikiView').hidden = view !== 'wiki';
   $('#termView').hidden = view !== 'term';
+  $('#groupView').hidden = view !== 'group';
 }
 
 // Shows an in-app terminal; null goes back to the overview.
@@ -1100,6 +1189,7 @@ function show(id) {
   paneVisibility();
   for (const [tid, t] of terms) t.el.classList.toggle('on', tid === id);
   const t = getTerm(id);
+  if (t.el.parentElement !== $('#termStack')) { $('#termStack').appendChild(t.el); gKey = null; }
   t.el.classList.add('on');
   requestAnimationFrame(() => { fitCurrent(); t.term.focus(); });
   render();
@@ -1124,6 +1214,10 @@ function go(v, arg) {
     if (arg) ctxSel = arg;
     setHash('context');
     loadContext();
+  } else if (v === 'group') {
+    curGroup = arg;
+    gKey = null;
+    setHash('g/' + arg);
   }
   paneVisibility();
   render();
@@ -1267,6 +1361,7 @@ function renderSide() {
       ${known ? pbarOf(known) : ''}<span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
   });
   $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
+  renderSideGroups();
   const wt = S.live.filter((s) => !s.appId);
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
@@ -1312,6 +1407,8 @@ function renderProjHead() {
     <h3>${esc(p.name)}</h3><span class="spacer"></span>
     <button class="btn primary" data-act="pick-open" data-pid="${esc(p.id)}" title="Put open, closed or older sessions in this project">Add sessions…</button>
     <button class="btn" data-act="proj-edit" data-pid="${esc(p.id)}">Edit project</button>
+    <div class="gchips">${S.groups.filter((g) => g.projectId === p.id).map((g) => `<button class="btn small" data-act="go" data-view="group" data-arg="${esc(g.id)}"><span style="color:${esc(p.color)}">▦</span> ${esc(g.name)} · ${g.members.length}</button>`).join('')}
+      <button class="btn small ghost" data-act="group-new" data-pid="${esc(p.id)}" title="Sessions of this project side by side, which can message each other">+ New group</button></div>
     <div class="folders">${p.folders.length
       ? p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" title="Start a new Claude session in ${esc(f)}">+ New session in ${esc(home(f))}</button>`).join('')
       : '<span class="none">No folders yet. Sessions you put in this project by hand show up here. Add a folder to start new sessions from here.</span>'}</div></div>`;
@@ -1416,6 +1513,7 @@ function renderUpdates() {
   $('#update').html = html;
   $('#optStartup').checked = S.settings.startWithWindows;
   $('#optAuto').checked = S.settings.autoUpdate;
+  $('#optTeam').checked = S.settings.teamTalk;
 }
 
 const SAMPLE = [
@@ -1729,6 +1827,286 @@ document.addEventListener('drop', async (e) => {
   if (p) await act('/api/projects/assign', { sessionId: sid, projectId: p.id }, `Put in ${p.name}`);
 });
 
+// ---- groups: sessions side by side, which can message each other ---------------------------
+
+let gKey = null;        // what the panes on screen were built for; a change rebuilds them
+let lastFocus = null;   // terminal id last typed in
+let gDrag = null;       // pane being dragged to a new place
+let editGroup = null;   // { id, name, projectId, rows: [{ role, src }] } in the group dialog
+const NARROW = matchMedia('(max-width: 760px)');
+
+function groupById(id) { return S && id ? S.groups.find((g) => g.id === id) || null : null; }
+function groupColor(g) { const p = project(g.projectId); return p ? p.color : 'var(--faint)'; }
+function memberState(m) {
+  if (!m.running) return { cls: 'ended', text: 'Not running' };
+  return statusOf(m.status ? { status: m.status } : null);
+}
+function markFocus() {
+  for (const p of document.querySelectorAll('.gpane')) p.classList.toggle('focus', p.dataset.tid === lastFocus);
+}
+
+function renderSideGroups() {
+  $('#sideGroups').html = S.groups.map((g) => {
+    const busy = g.members.filter((m) => m.status === 'busy').length;
+    const needs = g.members.filter((m) => m.status === 'waiting').length;
+    const sub = `${g.members.length} session${g.members.length === 1 ? '' : 's'}` + (g.paused ? ' · paused' : needs ? ` · ${needs} need you` : busy ? ` · ${busy} working` : '');
+    return `<button class="nav-item${view === 'group' && curGroup === g.id ? ' active' : ''}" data-act="go" data-view="group" data-arg="${esc(g.id)}">
+      <span class="ico" style="color:${esc(groupColor(g))};width:12px;margin-top:1px">▦</span><span><span class="nt">${esc(g.name)}</span><span class="ns">${esc(sub)}</span></span></button>`;
+  }).join('') || '<div class="side-empty">Put sessions side by side and let them talk. Use + to make one.</div>';
+}
+
+function renderGroup() {
+  const g = groupById(curGroup);
+  if (!g) return;
+  const p = project(g.projectId);
+  const narrow = NARROW.matches;
+  const lay = (v, t, tip) => `<button type="button" data-act="g-layout" data-v="${v}" class="${g.layout === v ? 'on' : ''}" title="${tip}">${t}</button>`;
+  $('#gBar').html = `<span class="ico" style="color:${esc(groupColor(g))}">▦</span><span class="tt">${esc(g.name)}</span>` +
+    (p ? `<span class="pchip" style="cursor:default"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</span>` : '') +
+    '<span class="spacer"></span>' +
+    (narrow ? '' : `<span class="seg">${lay('cols', '▥ Side by side', 'Next to each other')}${lay('rows', '▤ Stacked', 'One above the other')}${lay('grid', '▦ Grid', 'Two columns')}</span>`) +
+    `<button class="btn small" data-act="g-log" title="Show or hide the messages the sessions sent each other">Messages${g.messages.length ? ` (${g.messages.length})` : ''}</button>` +
+    `<button class="btn small" data-act="group-edit">Edit group</button>`;
+  const pause = $('#gPause');
+  pause.hidden = !g.paused;
+  pause.html = g.paused ? `<span class="msg">The sessions sent each other ${g.run} messages in a row with nobody typing, so messages are paused. Waiting ones stay queued.</span><button class="btn small primary" data-act="g-continue">Let them continue</button>` : '';
+  renderGroupLog(g);
+
+  const panes = $('#gPanes');
+  const key = [g.id, narrow ? 'list' : g.layout, ...g.members.map((m) => m.tid + (S.terminals.list.some((t) => t.id === m.tid) ? '' : '-'))].join('|');
+  if (key !== gKey) {
+    gKey = key;
+    panes.className = 'g-panes ' + (narrow ? 'list g-list' : g.layout);
+    // Park the terminals first: they move into the new panes instead of being torn down.
+    for (const el of panes.querySelectorAll('.term-pane')) $('#termStack').appendChild(el);
+    panes.innerHTML = '';
+    if (narrow) {
+      // Phones get a list: one terminal at a time fits a phone better than four tiny ones.
+      for (const m of g.members) panes.insertAdjacentHTML('beforeend', `<div class="card" data-tid="${esc(m.tid)}"></div>`);
+    } else {
+      g.members.forEach((m, i) => {
+        if (i && g.layout !== 'grid') panes.insertAdjacentHTML('beforeend', `<div class="g-gut" data-i="${i - 1}"></div>`);
+        const pane = document.createElement('div');
+        pane.className = 'gpane';
+        pane.dataset.tid = m.tid;
+        pane.innerHTML = '<div class="gp-head" draggable="true"></div><div class="gp-body"></div>';
+        panes.appendChild(pane);
+        if (S.terminals.list.some((t) => t.id === m.tid)) {
+          const t = getTerm(m.tid);
+          t.el.classList.add('on');
+          pane.querySelector('.gp-body').appendChild(t.el);
+        }
+      });
+    }
+  }
+  if (!narrow) applySizes(g);
+  for (const m of g.members) {
+    const st = memberState(m);
+    const box = panes.querySelector(`[data-tid="${CSS.escape(m.tid)}"]`);
+    if (!box) continue;
+    const others = g.members.filter((x) => x !== m);
+    const connect = m.running && !m.connected && S.settings.teamTalk
+      ? `<button class="btn small" data-act="g-connect" data-tid="${esc(m.tid)}" ${m.status === 'idle' ? '' : 'disabled'} title="Started before messages between sessions were on, so it can not send any. Restarts it with the same conversation${m.status === 'idle' ? '' : ' (once it is idle)'}.">Connect</button>` : '';
+    const pass = others.length && m.sid ? `<button class="btn small ghost" data-act="g-pass" data-tid="${esc(m.tid)}" title="Send its last reply to another session of the group">Pass reply ▸</button>` : '';
+    if (narrow) {
+      box.className = `card ${st.cls}`;
+      box.html = `<div class="row"><span class="status"><span class="dot"></span>${st.text}</span></div>
+        <div class="title">${esc(m.role)}</div><div class="meta"><span>${esc(m.title || 'New session')}</span><span class="path">${esc(home(m.cwd))}</span></div>
+        <div class="actions">${m.running ? `<button class="btn primary" data-act="open" data-tid="${esc(m.tid)}">Open</button>` : m.sid ? `<button class="btn primary" data-act="resume" data-id="${esc(m.sid)}">Reopen</button>` : ''}${pass}${connect}</div>`;
+      continue;
+    }
+    box.querySelector('.gp-head').html = `<span class="status ${st.cls}"><span class="dot"></span></span><span class="role">${esc(m.role)}</span>
+      <span class="gt" title="${esc((m.title || '') + (m.cwd ? '\n' + m.cwd : ''))}">${esc(m.title || st.text)}</span>${pass}${connect}
+      <button class="btn small ghost" data-act="open" data-tid="${esc(m.tid)}" title="Open on its own, full size">⤢</button>`;
+    let over = box.querySelector('.gp-over');
+    const why = !m.running
+      ? `<b>${esc(m.role)}</b> is not running.${m.sid ? `<button class="btn primary" data-act="resume" data-id="${esc(m.sid)}">Reopen it here</button>` : ''}`
+      : '';
+    if (why && !over) { over = document.createElement('div'); over.className = 'gp-over'; box.querySelector('.gp-body').appendChild(over); }
+    if (over) { if (why) over.html = why; else over.remove(); }
+  }
+  markFocus();
+  requestAnimationFrame(fitCurrent);
+}
+
+function applySizes(g) {
+  const panes = $('#gPanes');
+  if (g.layout === 'grid') { panes.style.gridTemplateColumns = panes.style.gridTemplateRows = ''; return; }
+  const sizes = g.sizes && g.sizes.length === g.members.length ? g.sizes : g.members.map(() => 1);
+  const tpl = sizes.map((n) => `minmax(0, ${n}fr)`).join(' 6px ');
+  panes.style.gridTemplateColumns = g.layout === 'cols' ? tpl : '';
+  panes.style.gridTemplateRows = g.layout === 'rows' ? tpl : '';
+}
+
+function renderGroupLog(g) {
+  const show = $('#gLog');
+  if (show.dataset.user === undefined) show.hidden = NARROW.matches || !g.messages.length;
+  const name = (m, side) => esc(m[side + 'Role']);
+  $('#gMsgs').html = g.messages.length ? g.messages.slice().reverse().map((m) => {
+    const st = m.error ? `<span class="st" style="color:var(--closed)">${esc(m.error)}</span>`
+      : m.deliveredAt ? `<span class="st">delivered ${ago(m.deliveredAt)}</span>`
+      : `<span class="st" style="color:var(--waiting)">${g.paused && m.kind === 'agent' ? 'paused' : 'waits until idle'}</span>`;
+    return `<div class="g-msg${m.deliveredAt ? '' : m.error ? ' err' : ' wait'}" data-mid="${esc(m.id)}"><div class="who"><b>${name(m, 'from')}</b> → <b>${name(m, 'to')}</b>${m.kind === 'handoff' ? ' (passed on)' : ''}${st}</div>
+      <div class="txt" title="Click to show all">${esc(m.text)}</div></div>`;
+  }).join('') : '<div class="side-empty" style="padding:6px">Nothing yet. When a session uses send_message, or you pass a reply on, it shows up here.</div>';
+}
+
+// Drag a pane's title bar onto another pane to swap them.
+$('#gPanes').addEventListener('dragstart', (e) => {
+  const head = e.target.closest && e.target.closest('.gp-head');
+  if (!head) return;
+  gDrag = head.parentElement.dataset.tid;
+  e.dataTransfer.setData('text/plain', 'pane');
+  e.dataTransfer.effectAllowed = 'move';
+});
+$('#gPanes').addEventListener('dragover', (e) => {
+  const pane = gDrag && e.target.closest('.gpane');
+  if (!pane) return;
+  e.preventDefault();
+  for (const p of document.querySelectorAll('.gpane.drop-ok')) if (p !== pane) p.classList.remove('drop-ok');
+  if (pane.dataset.tid !== gDrag) pane.classList.add('drop-ok');
+});
+$('#gPanes').addEventListener('dragend', () => { gDrag = null; for (const p of document.querySelectorAll('.gpane.drop-ok')) p.classList.remove('drop-ok'); });
+$('#gPanes').addEventListener('drop', (e) => {
+  const pane = gDrag && e.target.closest('.gpane');
+  const g = groupById(curGroup);
+  if (!pane || !g || pane.dataset.tid === gDrag) return;
+  e.preventDefault();
+  const order = g.members.map((m) => m.tid);
+  const a = order.indexOf(gDrag);
+  const b = order.indexOf(pane.dataset.tid);
+  [order[a], order[b]] = [order[b], order[a]];
+  // Shown at once; the server keeps it.
+  g.members.sort((x, y) => order.indexOf(x.tid) - order.indexOf(y.tid));
+  if (g.sizes) [g.sizes[a], g.sizes[b]] = [g.sizes[b], g.sizes[a]];
+  gDrag = null;
+  renderGroup();
+  api('/api/groups/layout', { id: g.id, order, sizes: g.sizes }).catch((er) => toast(er.message, true));
+});
+
+// Drag the gap between two panes to resize them.
+$('#gPanes').addEventListener('pointerdown', (e) => {
+  const gut = e.target.closest('.g-gut');
+  const g = groupById(curGroup);
+  if (!gut || !g) return;
+  e.preventDefault();
+  const i = Number(gut.dataset.i);
+  const cols = g.layout === 'cols';
+  const panes = [...$('#gPanes').querySelectorAll('.gpane')];
+  const size = (el) => (cols ? el.getBoundingClientRect().width : el.getBoundingClientRect().height);
+  const px = size(panes[i]) + size(panes[i + 1]);
+  const sizes = g.sizes && g.sizes.length === g.members.length ? [...g.sizes] : g.members.map(() => 1);
+  const fr = sizes[i] + sizes[i + 1];
+  const start = cols ? e.clientX : e.clientY;
+  const a0 = sizes[i];
+  gut.classList.add('on');
+  gut.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const d = ((cols ? ev.clientX : ev.clientY) - start) * (fr / px);
+    sizes[i] = Math.min(fr - 0.15 * fr, Math.max(0.15 * fr, a0 + d));
+    sizes[i + 1] = fr - sizes[i];
+    g.sizes = sizes;
+    applySizes(g);
+  };
+  const up = () => {
+    gut.classList.remove('on');
+    gut.removeEventListener('pointermove', move);
+    gut.removeEventListener('pointerup', up);
+    api('/api/groups/layout', { id: g.id, sizes: g.sizes }).catch((er) => toast(er.message, true));
+  };
+  gut.addEventListener('pointermove', move);
+  gut.addEventListener('pointerup', up);
+});
+$('#gMsgs').addEventListener('click', (e) => { const m = e.target.closest('.g-msg'); if (m) m.classList.toggle('open'); });
+NARROW.addEventListener('change', () => { gKey = null; if (view === 'group') renderGroup(); });
+
+function openPop(btn, html) {
+  const m = $('#pmenu');
+  m.innerHTML = html;
+  m.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (r.bottom + 6 + h > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+}
+
+// Group dialog. A row's source is "t:<terminal id>" (a session already in the app) or "n:<folder>" (start a new one).
+function folderChoices(pid) {
+  const p = project(pid);
+  const out = [];
+  for (const f of [...(p ? p.folders : []), ...S.folders]) if (!out.some((x) => x.toLowerCase() === f.toLowerCase())) out.push(f);
+  return out;
+}
+
+function openGroupEditor(g, preset) {
+  const pid = g ? g.projectId : (preset && preset.projectId) || projFilter || null;
+  const folder = folderChoices(pid)[0];
+  editGroup = g
+    ? { id: g.id, name: g.name, projectId: g.projectId, layout: g.layout, rows: g.members.map((m) => ({ role: m.role, src: 't:' + m.tid })) }
+    : { id: null, name: '', projectId: pid, layout: 'cols', rows: preset && preset.rows ? preset.rows : [
+      { role: 'Research', src: folder ? 'n:' + folder : '' },
+      { role: 'Build', src: folder ? 'n:' + folder : '' },
+    ] };
+  $('#groupDlgTitle').textContent = g ? 'Edit group' : 'New group';
+  $('#gName').value = editGroup.name;
+  $('#gDelete').hidden = !g;
+  renderGroupEditor();
+  $('#groupDlg').showModal();
+  $('#gName').focus();
+}
+
+function renderGroupEditor() {
+  $('#gProject').innerHTML = '<option value="">No project</option>' + S.projects.map((p) => `<option value="${esc(p.id)}"${p.id === editGroup.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  const running = S.terminals.list.filter((t) => !t.exited);
+  const taken = (tid) => S.groups.find((x) => x.id !== editGroup.id && x.members.some((m) => m.tid === tid));
+  const folders = folderChoices(editGroup.projectId);
+  $('#gRows').innerHTML = editGroup.rows.map((r, i) => {
+    const opts = folders.map((f) => `<option value="n:${esc(f)}"${r.src === 'n:' + f ? ' selected' : ''}>New session in ${esc(home(f))}</option>`).join('') +
+      (running.length ? '<option disabled>── Running in the app ──</option>' : '') +
+      running.map((t) => {
+        const s = S.live.find((x) => x.appId === t.id) || lastKnown.get(t.id);
+        const other = taken(t.id);
+        return `<option value="t:${esc(t.id)}"${r.src === 't:' + t.id ? ' selected' : ''}>${esc(s ? label(s) : 'New session')} · ${esc(home(t.cwd))}${other ? ` (moves from ${esc(other.name)})` : ''}</option>`;
+      }).join('');
+    return `<div class="gdlg-row" data-i="${i}"><input type="text" maxlength="30" value="${esc(r.role)}" placeholder="Role, like Research" data-f="role">
+      <select class="search" data-f="src">${r.src ? '' : '<option value="" selected>Pick a folder or a session</option>'}${opts}</select>
+      <button type="button" class="btn ghost small" data-act="grow-del" data-i="${i}" title="Take out of the group (the session keeps running)" ${editGroup.rows.length > 1 ? '' : 'disabled'}>✕</button></div>`;
+  }).join('');
+  $('#gAddRow').disabled = editGroup.rows.length >= 6;
+}
+
+function readGroupEditor() {
+  editGroup.name = $('#gName').value;
+  editGroup.projectId = $('#gProject').value || null;
+  for (const row of $('#gRows').querySelectorAll('.gdlg-row')) {
+    const r = editGroup.rows[Number(row.dataset.i)];
+    r.role = row.querySelector('[data-f="role"]').value;
+    r.src = row.querySelector('[data-f="src"]').value;
+  }
+}
+
+$('#gProject').addEventListener('change', () => {
+  readGroupEditor();
+  // New sessions follow the project's first folder unless one was picked by hand.
+  const f = folderChoices(editGroup.projectId)[0];
+  if (f) for (const r of editGroup.rows) if (!r.src || r.src.startsWith('n:')) r.src = 'n:' + f;
+  renderGroupEditor();
+});
+
+async function saveGroup(btn) {
+  readGroupEditor();
+  if (editGroup.rows.some((r) => !r.src)) return toast('Pick a folder or a session for every row', true);
+  const members = editGroup.rows.map((r) => (r.src.startsWith('t:') ? { role: r.role, tid: r.src.slice(2) } : { role: r.role, cwd: r.src.slice(2) }));
+  const starting = members.filter((m) => m.cwd).length;
+  btn.disabled = true;
+  const r = await act('/api/groups/save', { id: editGroup.id, name: editGroup.name, projectId: editGroup.projectId, layout: editGroup.layout, members, ...proposedSize() },
+    starting ? `Starting ${starting} session${starting > 1 ? 's' : ''}…` : 'Group saved');
+  btn.disabled = false;
+  if (!r) return;
+  $('#groupDlg').close();
+  go('group', r.id);
+}
+
 // ---- context and plan usage -------------------------------------------------------------
 
 let ctxData = null; // { sessions: [...] }
@@ -1958,6 +2336,7 @@ function render() {
   renderUpdIcon();
   if ($('#setDlg').open) renderUpdates();
   if (view === 'term') return renderTermBar();
+  if (view === 'group') return renderGroup();
   if (view === 'context') return renderPlanUsage();
   if (view !== 'overview') return;
   renderBanner();
@@ -1983,9 +2362,11 @@ function refresh() {
           terms.get(id).el.remove();
           terms.delete(id);
           if (current === id) { current = null; if (view === 'term') go('overview'); }
+          gKey = null;
         }
       }
       if (projFilter && !project(projFilter)) projFilter = null;
+      if (view === 'group' && !groupById(curGroup)) go('overview');
       render();
     } catch {
       offline = true;
@@ -2052,6 +2433,8 @@ document.addEventListener('click', async (e) => {
     case 'move': b.disabled = true; await openNew('/api/move', { sessionId: id }, 'Moving into the app…'); break;
     case 'resume': {
       b.disabled = true;
+      // In a group the reopened session takes its old pane, so the group stays on screen.
+      if (b.closest('#groupView')) { if (!(await act('/api/resume', { sessionId: id, ...proposedSize() }, 'Reopening…'))) b.disabled = false; break; }
       const old = b.dataset.replace;
       const r = await openNew('/api/resume', { sessionId: id }, 'Reopening…');
       if (r && r.id && old) api('/api/term/forget', { id: old }).catch(() => {});
@@ -2149,6 +2532,44 @@ document.addEventListener('click', async (e) => {
       }
       break;
 
+    // groups
+    case 'group-new': openGroupEditor(null, { projectId: b.dataset.pid || null }); break;
+    case 'group-edit': openGroupEditor(groupById(curGroup)); break;
+    case 'group-cancel': $('#groupDlg').close(); break;
+    case 'group-save': await saveGroup(b); break;
+    case 'grow-add': readGroupEditor(); editGroup.rows.push({ role: '', src: (editGroup.rows[editGroup.rows.length - 1] || {}).src || '' }); renderGroupEditor(); $('#gRows').querySelector('.gdlg-row:last-child input').focus(); break;
+    case 'grow-del': readGroupEditor(); editGroup.rows.splice(Number(b.dataset.i), 1); renderGroupEditor(); break;
+    case 'group-delete':
+      if (b.dataset.armed) {
+        const r = await act('/api/groups/delete', { id: editGroup.id }, 'Group deleted; its sessions keep running');
+        if (r) { $('#groupDlg').close(); go('overview'); }
+      } else {
+        b.dataset.armed = '1';
+        b.textContent = 'Click again to delete';
+        setTimeout(() => { delete b.dataset.armed; b.textContent = 'Delete group'; }, 4000);
+      }
+      break;
+    case 'g-layout': {
+      const g = groupById(curGroup);
+      if (!g || g.layout === b.dataset.v) break;
+      g.layout = b.dataset.v;
+      renderGroup();
+      api('/api/groups/layout', { id: g.id, layout: g.layout }).catch((er) => toast(er.message, true));
+      break;
+    }
+    case 'g-log': { const l = $('#gLog'); l.hidden = !l.hidden; l.dataset.user = '1'; break; }
+    case 'g-continue': await act('/api/groups/continue', { id: curGroup }, 'Messages go through again'); break;
+    case 'g-connect': b.disabled = true; await act('/api/groups/connect', { tid: b.dataset.tid, ...proposedSize() }, 'Restarting it with the team tools…'); break;
+    case 'g-pass': {
+      const g = groupById(curGroup);
+      const from = g && g.members.find((m) => m.tid === b.dataset.tid);
+      if (!from) break;
+      openPop(b, `<div class="hint">Send ${esc(from.role)}'s last reply to</div>` +
+        g.members.filter((m) => m !== from).map((m) => `<button data-act="g-pass-to" data-from="${esc(from.tid)}" data-to="${esc(m.tid)}">${esc(m.role)}</button>`).join(''));
+      break;
+    }
+    case 'g-pass-to': closePmenu(); await act('/api/groups/handoff', { id: curGroup, from: b.dataset.from, to: b.dataset.to }, 'Passed on; it arrives once that session is idle'); break;
+
     // context and usage
     case 'ctx-pick': ctxSel = id; renderContext(); break;
     case 'ctx-refresh': loadContext(); break;
@@ -2199,6 +2620,7 @@ $('#setDlg').addEventListener('click', (e) => { if (e.target === $('#setDlg')) $
 $('#sideWtHead').textContent = 'In ' + WT;
 $('#optStartupLabel').textContent = STARTUP;
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? (MAC ? 'Starts at login' : 'Starts with Windows') : (MAC ? 'Will not start at login' : 'Will not start with Windows')));
+$('#optTeam').addEventListener('change', (e) => act('/api/settings', { teamTalk: e.target.checked }, e.target.checked ? 'Sessions started from now on can message their group' : 'New sessions start without the team tools'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
 function route() {
@@ -2208,6 +2630,7 @@ function route() {
   if ((m = /^p\/([0-9a-f-]{36})$/.exec(h)) && project(m[1])) return go('overview', m[1]);
   if ((m = /^(wiki|skills)(?:\/([0-9a-f]{12}))?$/.exec(h))) return go(m[1], m[2]);
   if (h === 'context') return go('context');
+  if ((m = /^g\/([0-9a-f-]{36})$/.exec(h)) && groupById(m[1])) return go('group', m[1]);
   go('overview');
 }
 

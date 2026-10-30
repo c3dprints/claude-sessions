@@ -24,6 +24,7 @@ const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
 const { giveWindowIcon } = require('./lib/windowicon');
+const teams = require('./lib/teams');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
@@ -63,10 +64,13 @@ async function poll() {
   if (polling) return;
   polling = true;
   try {
-    const pids = FAKE_PIDS || await sessions.listClaudePids();
+    // Tests also count the stand-ins running in their terminals, so a fake registry entry can point at one.
+    const pids = FAKE_PIDS ? new Set([...FAKE_PIDS, ...(TEST_MODE ? host.list().filter((t) => t.pid && !t.exited).map((t) => t.pid) : [])])
+      : await sessions.listClaudePids();
     live = sessions.liveSessions(CLAUDE_DIR, pids);
     // Without a trustworthy pid list every session would look closed, so skip tracking.
     if (pids) store.observe(live);
+    tendGroups();
   } catch (e) {
     log(`poll failed: ${e.stack || e}`);
   } finally {
@@ -114,6 +118,7 @@ function snapshot() {
     history: history.map(withNick),
     folders: recentFolders([...live, ...closed, ...history]).slice(0, 12),
     projects: store.state.projects,
+    groups: groupsView(terms),
     terminals: { up: host.up, outdated: host.outdated, error: host.error, list: terms },
     usage: usage.planUsage(CLAUDE_DIR, DATA_DIR),
     update: { ...updateStatus(), busy: updateBusy },
@@ -124,6 +129,7 @@ function snapshot() {
       theme: store.state.settings.theme || 'system',
       terminal: store.state.settings.terminal || null,
       remote: !!store.state.settings.remote,
+      teamTalk: store.state.settings.teamTalk !== false,
     },
   };
 }
@@ -242,11 +248,15 @@ function claudeExe() {
   return claudeExePath;
 }
 
-function claudeCommand(resumeId) {
+// mcpFile: the team MCP server config of this terminal (see lib/teams.js), or null.
+function claudeCommand(resumeId, mcpFile) {
   if (TEST_MODE && process.env.CS_CLAUDE_CMD) return process.env.CS_CLAUDE_CMD;
   const exe = claudeExe();
-  const cmd = platform.WIN ? `"${exe}"` : exe ? terminal.shQuote(exe) : 'claude';
-  return cmd + (resumeId ? ` --resume ${resumeId}` : '');
+  const q = (s) => (platform.WIN ? `"${s}"` : terminal.shQuote(s));
+  const cmd = exe ? q(exe) : 'claude';
+  // Both flags take a list, so they go before --resume, which ends it.
+  const team = mcpFile ? ` --mcp-config ${q(mcpFile)} --allowedTools mcp__${teams.MCP_NAME}` : '';
+  return cmd + team + (resumeId ? ` --resume ${resumeId}` : '');
 }
 
 function size(b) {
@@ -260,9 +270,168 @@ async function startTerminal(cwd, resumeId, b) {
   const dir = terminal.checkDir(cwd);
   if (resumeId !== undefined && !sessions.UUID_RE.test(String(resumeId))) throw fail(400, 'bad session id');
   await host.ensure();
-  const r = await host.request({ t: 'spawn', cwd: dir, command: claudeCommand(resumeId), resumeId: resumeId || null, ...size(b) });
+  const team = store.state.settings.teamTalk !== false ? teams.writeConfig(DATA_DIR, APP_DIR, PORT) : null;
+  const r = await host.request({ t: 'spawn', cwd: dir, command: claudeCommand(resumeId, team && team.file), resumeId: resumeId || null, ...size(b) });
+  if (team) { store.state.teamKeys[team.key] = r.session.id; store.save(); }
   log(`terminal ${r.session.id} started in ${dir}${resumeId ? ' resuming ' + resumeId : ''}`);
   return { ok: true, id: r.session.id };
+}
+
+// ---- groups ------------------------------------------------------------------
+// Sessions shown side by side under one name; with team talk on they can message
+// each other (lib/teams.js has the rules).
+
+const bracketed = new Map(); // terminal id -> its program turned on bracketed paste
+const lastDelivery = new Map(); // terminal id -> when a message was last typed into it
+let teamSecret = null;
+
+function secretKey() { return teamSecret || (teamSecret = teams.secret(DATA_DIR)); }
+
+function trackPasteMode(msg) {
+  if (msg.t === 'out') {
+    const s = Buffer.from(msg.data, 'base64').toString('latin1');
+    const on = s.lastIndexOf('\x1b[?2004h');
+    const off = s.lastIndexOf('\x1b[?2004l');
+    if (on > off) bracketed.set(msg.id, true);
+    else if (off > on) bracketed.set(msg.id, false);
+  } else if (msg.t === 'exit') {
+    bracketed.delete(msg.session.id);
+  }
+}
+
+function connectedTids() { return new Set(Object.values(store.state.teamKeys)); }
+
+function liveOfTerm(t) { return t && t.pid && !t.exited ? live.find((x) => x.pid === t.pid) || null : null; }
+
+function groupsView(terms) {
+  const connected = connectedTids();
+  const nick = store.state.nicknames;
+  return store.state.groups.map((g) => ({
+    id: g.id, name: g.name, projectId: g.projectId, layout: g.layout, sizes: g.sizes, paused: !!g.paused, run: g.run || 0,
+    members: g.members.map((m) => {
+      const t = terms.find((x) => x.id === m.tid);
+      const s = liveOfTerm(t);
+      return {
+        tid: m.tid, sid: m.sid, role: m.role, running: !!t && !t.exited, status: s ? s.status : null,
+        title: (m.sid && nick[m.sid]) || (s && (s.title || s.firstPrompt)) || null, cwd: (t && t.cwd) || null, connected: connected.has(m.tid),
+      };
+    }),
+    messages: store.state.teamMsgs.filter((x) => x.gid === g.id).slice(-60),
+  }));
+}
+
+// Runs on every poll: members follow reopened sessions, old keys go, waiting messages are delivered.
+function tendGroups() {
+  const terms = appTerminals();
+  let changed = teams.syncGroups(store.state.groups, terms);
+  if (host.up) changed = teams.pruneKeys(DATA_DIR, store.state.teamKeys, new Set(terms.map((t) => t.id))) || changed;
+  if (changed) store.save();
+  deliver(terms).catch((e) => log(`team delivery: ${e.stack || e}`));
+}
+
+let delivering = false;
+async function deliver(terms) {
+  if (delivering || !host.up) return;
+  delivering = true;
+  try {
+    for (const g of store.state.groups) {
+      const waiting = store.state.teamMsgs.filter((m) => m.gid === g.id && !m.deliveredAt && !m.error);
+      if (!waiting.length) continue;
+      // A reopened teammate runs in a new terminal; its role still finds it.
+      for (const m of waiting) {
+        const member = g.members.find((x) => x.tid === m.to) || g.members.find((x) => x.role === m.toRole);
+        if (member) m.to = member.tid; else m.error = 'left the group';
+      }
+      for (const to of new Set(waiting.filter((m) => !m.error).map((m) => m.to))) {
+        const t = terms.find((x) => x.id === to);
+        const mine = waiting.filter((m) => m.to === to && !m.error);
+        if (!t || t.exited) continue; // waits until the session is reopened
+        const s = liveOfTerm(t);
+        // Only into an idle prompt: typing into a permission prompt would answer it.
+        if (!s || s.status !== 'idle' || Date.now() - (lastDelivery.get(to) || 0) < teams.COOLDOWN_MS) continue;
+        const agent = mine.filter((m) => m.kind === 'agent').length;
+        if (agent && g.paused) continue;
+        if (agent && (g.run || 0) + agent > teams.RUN_LIMIT) {
+          g.paused = true;
+          log(`group ${g.name}: paused after ${g.run} agent messages in a row`);
+          continue;
+        }
+        if (!bracketed.has(to)) await learnPasteMode(to);
+        await host.request({ t: 'input', id: to, data: teams.typed(teams.messageText(mine, g.name), bracketed.get(to)) });
+        await new Promise((r) => setTimeout(r, 250));
+        await host.request({ t: 'input', id: to, data: '\r' });
+        lastDelivery.set(to, Date.now());
+        const now = Date.now();
+        for (const m of mine) m.deliveredAt = now;
+        g.run = (g.run || 0) + agent;
+      }
+    }
+    store.save();
+  } finally {
+    delivering = false;
+  }
+}
+
+// After a dashboard restart the mode is read from what the terminal printed so far.
+function learnPasteMode(id) {
+  return new Promise((resolve) => host.call({ t: 'replay', id }, (r) => {
+    if (r.ok && r.data) trackPasteMode({ t: 'out', id, data: r.data });
+    resolve();
+  }));
+}
+
+function queueMessages(g, from, list, text, kind) {
+  const at = Date.now();
+  for (const m of list) {
+    store.state.teamMsgs.push({ id: crypto.randomUUID(), gid: g.id, from: from ? from.tid : null, fromRole: from ? from.role : 'you', to: m.tid, toRole: m.role, text, at, deliveredAt: null, kind });
+  }
+  store.state.teamMsgs = store.state.teamMsgs.slice(-teams.LOG_MAX);
+  store.save();
+  deliver(appTerminals()).catch((e) => log(`team delivery: ${e.stack || e}`));
+}
+
+// The terminal behind a team MCP call; it must prove its key.
+function teamCaller(req) {
+  const key = String(req.headers['x-team-key'] || '');
+  if (!teams.tokenOk(secretKey(), key, req.headers['x-team-token'])) throw fail(403, 'this session is not known to Claude Sessions');
+  const tid = store.state.teamKeys[key];
+  if (!tid) throw fail(403, 'this session is not known to Claude Sessions');
+  return tid;
+}
+
+function teamInfo(tid) {
+  const g = teams.groupOf(store.state.groups, tid);
+  if (!g) return 'You are not in a group yet. The user can put this session in a group in Claude Sessions; then teammates show up here.';
+  const view = groupsView(appTerminals()).find((x) => x.id === g.id);
+  const me = view.members.find((m) => m.tid === tid);
+  const p = store.state.projects.find((x) => x.id === g.projectId);
+  const state = (m) => (!m.running ? 'not running' : m.status === 'busy' ? 'working' : m.status === 'waiting' ? 'waiting for the user' : m.status || 'starting');
+  const mates = view.members.filter((m) => m.tid !== tid).map((m) => `- ${m.role}: ${state(m)}${m.title ? `, working on "${m.title}"` : ''}${m.cwd ? `, in ${m.cwd}` : ''}${m.connected ? '' : ' (cannot message back)'}`);
+  return `Group "${g.name}"${p ? ` in project ${p.name}` : ''}. You are "${me.role}".\n` +
+    (mates.length ? `Teammates:\n${mates.join('\n')}` : 'No teammates yet.') +
+    (g.paused ? `\nMessages between sessions are paused until the user lets them continue (${teams.RUN_LIMIT} in a row with nobody typing).` : '') +
+    '\nA message waits until the teammate is idle, then arrives in its session as a prompt.';
+}
+
+function checkGroupBody(b) {
+  const name = teams.checkName(b.name, 'group', 50);
+  const projectId = b.projectId || null;
+  if (projectId && !store.state.projects.some((p) => p.id === projectId)) throw fail(404, 'no such project');
+  const layout = teams.LAYOUTS.includes(b.layout) ? b.layout : 'cols';
+  if (!Array.isArray(b.members) || b.members.length > 6) throw fail(400, 'a group holds up to 6 sessions');
+  const roles = new Set();
+  const members = b.members.map((m) => {
+    const role = teams.checkName(m.role, 'role', 30);
+    if (roles.has(role.toLowerCase())) throw fail(400, `two sessions are both called ${role}`);
+    roles.add(role.toLowerCase());
+    if (m.cwd) {
+      if (!knownFolder(m.cwd)) throw fail(400, 'pick a folder from the list');
+      return { role, cwd: m.cwd };
+    }
+    const t = termOf(String(m.tid));
+    return { role, tid: t.id };
+  });
+  return { name, projectId, layout, members };
 }
 
 function cwdForResume(sessionId) {
@@ -304,6 +473,7 @@ function replayAll(client) {
 }
 
 host.on('event', (msg) => {
+  trackPasteMode(msg);
   for (const c of streams) {
     if (msg.t === 'out' && c.pending.has(msg.id)) continue;
     sse(c.res, msg);
@@ -511,7 +681,131 @@ const routes = {
     if (typeof b.data !== 'string') throw fail(400, 'data must be text');
     if (t.exited) throw fail(409, 'that session has ended');
     await host.request({ t: 'input', id: t.id, data: b.data });
+    // Someone is at the keyboard: the group's count of agent messages in a row starts over.
+    const g = teams.groupOf(store.state.groups, t.id);
+    if (g && g.run && !g.paused) g.run = 0;
     return { ok: true };
+  },
+
+  // ---- groups
+  'POST /api/groups/save': async (b) => {
+    const p = checkGroupBody(b);
+    let g = b.id ? store.state.groups.find((x) => x.id === b.id) : null;
+    if (b.id && !g) throw fail(404, 'no such group');
+    if (!g && store.state.groups.length >= 30) throw fail(400, 'that is a lot of groups; delete one first');
+    // New sessions first, so a failed start changes nothing.
+    const members = [];
+    for (const m of p.members) {
+      if (m.cwd) {
+        const r = await startTerminal(m.cwd, undefined, b);
+        members.push({ tid: r.id, sid: null, role: m.role });
+      } else {
+        const old = g && g.members.find((x) => x.tid === m.tid);
+        const known = appTerminals().find((t) => t.id === m.tid);
+        members.push({ tid: m.tid, sid: (known && known.sessionId) || (old && old.sid) || null, role: m.role });
+      }
+    }
+    // A session is in one group at a time.
+    for (const o of store.state.groups) if (o !== g) o.members = o.members.filter((x) => !members.some((m) => m.tid === x.tid));
+    if (!g) {
+      g = { id: crypto.randomUUID(), paused: false, run: 0 };
+      store.state.groups.push(g);
+    }
+    if (!g.members || g.members.length !== members.length) g.sizes = members.map(() => 1);
+    Object.assign(g, { name: p.name, projectId: p.projectId, layout: p.layout, members });
+    store.save();
+    log(`group ${g.name} saved with ${members.length} sessions`);
+    return { ok: true, id: g.id, started: members.filter((m, i) => p.members[i].cwd).map((m) => m.tid) };
+  },
+
+  'POST /api/groups/delete': async (b) => {
+    if (!store.state.groups.some((g) => g.id === b.id)) throw fail(404, 'no such group');
+    store.state.groups = store.state.groups.filter((g) => g.id !== b.id);
+    store.state.teamMsgs = store.state.teamMsgs.filter((m) => m.gid !== b.id);
+    store.save();
+    return { ok: true };
+  },
+
+  // Order of the panes (dragged around), their sizes and the layout.
+  'POST /api/groups/layout': async (b) => {
+    const g = store.state.groups.find((x) => x.id === b.id);
+    if (!g) throw fail(404, 'no such group');
+    if (b.layout !== undefined) {
+      if (!teams.LAYOUTS.includes(b.layout)) throw fail(400, 'layout must be cols, rows or grid');
+      g.layout = b.layout;
+    }
+    if (Array.isArray(b.order)) {
+      if (b.order.length !== g.members.length || !g.members.every((m) => b.order.includes(m.tid))) throw fail(400, 'order must list every session of the group');
+      g.members.sort((x, y) => b.order.indexOf(x.tid) - b.order.indexOf(y.tid));
+    }
+    if (Array.isArray(b.sizes)) {
+      if (b.sizes.length !== g.members.length || !b.sizes.every((n) => typeof n === 'number' && n >= 0.1 && n <= 10)) throw fail(400, 'bad sizes');
+      g.sizes = b.sizes.map((n) => Math.round(n * 1000) / 1000);
+    }
+    store.save();
+    return { ok: true };
+  },
+
+  // Passes the last reply of one member to another, as if the user had pasted it there.
+  'POST /api/groups/handoff': async (b) => {
+    const g = store.state.groups.find((x) => x.id === b.id);
+    if (!g) throw fail(404, 'no such group');
+    const from = g.members.find((m) => m.tid === b.from);
+    const to = g.members.find((m) => m.tid === b.to);
+    if (!from || !to || from === to) throw fail(400, 'pick two different sessions of the group');
+    const file = from.sid && sessions.findTranscript(CLAUDE_DIR, from.sid);
+    const text = file && teams.lastReply(file);
+    if (!text) throw fail(409, `${from.role} has not written a reply yet`);
+    queueMessages(g, from, [to], text, 'handoff');
+    return { ok: true };
+  },
+
+  'POST /api/groups/continue': async (b) => {
+    const g = store.state.groups.find((x) => x.id === b.id);
+    if (!g) throw fail(404, 'no such group');
+    g.paused = false;
+    g.run = 0;
+    store.save();
+    deliver(appTerminals()).catch((e) => log(`team delivery: ${e.stack || e}`));
+    return { ok: true };
+  },
+
+  // A session started before team talk was on has no team tools: restart it (same conversation) with them.
+  'POST /api/groups/connect': async (b) => {
+    const t = termOf(String(b.tid));
+    const g = teams.groupOf(store.state.groups, t.id);
+    const s = liveOfTerm(t);
+    if (!g || !s) throw fail(404, 'that session is not running in a group');
+    if (store.state.settings.teamTalk === false) throw fail(400, 'turn on messages between sessions in Settings first');
+    if (s.status !== 'idle') throw fail(409, 'wait until it is idle, then connect it');
+    await host.request({ t: 'kill', id: t.id });
+    if (!(await processGone(s.pid, 8000))) throw fail(500, 'the session did not stop');
+    const r = await startTerminal(t.cwd, s.sessionId, b);
+    const m = g.members.find((x) => x.tid === t.id);
+    if (m) { m.tid = r.id; m.sid = s.sessionId; }
+    store.save();
+    host.request({ t: 'forget', id: t.id }).catch(() => {});
+    log(`group ${g.name}: ${m ? m.role : t.id} restarted with team tools`);
+    return { ok: true, id: r.id };
+  },
+
+  // ---- the team MCP server of each session (scripts/team-mcp.js); handle() keeps these off the phone
+  'POST /api/team/info': async (b, url, req) => ({ text: teamInfo(teamCaller(req)) }),
+
+  'POST /api/team/send': async (b, url, req) => {
+    const tid = teamCaller(req);
+    const g = teams.groupOf(store.state.groups, tid);
+    if (!g) throw fail(409, 'You are not in a group, so there is nobody to message.');
+    const text = String(b.message || '').trim();
+    if (!text) throw fail(400, 'The message is empty.');
+    if (text.length > teams.MSG_MAX) throw fail(400, `The message is too long (over ${teams.MSG_MAX} characters). Put the details in a file and send its path.`);
+    const to = teams.recipients(g, tid, b.to);
+    if (!to.length) throw fail(400, `Nobody in group "${g.name}" is called "${b.to}". Teammates: ${g.members.filter((m) => m.tid !== tid).map((m) => m.role).join(', ') || 'none'}.`);
+    queueMessages(g, g.members.find((m) => m.tid === tid), to, text, 'agent');
+    const names = to.map((m) => m.role).join(', ');
+    return { text: g.paused
+      ? `Saved for ${names}, but messages in this group are paused until the user lets them continue.`
+      : `Sent to ${names}. It arrives as a prompt once ${to.length > 1 ? 'each one is' : 'it is'} idle. Its answer, if any, comes back to you the same way.` };
   },
 
   'POST /api/term/resize': async (b) => {
@@ -652,6 +946,7 @@ const routes = {
     }
     if (b.terminal !== undefined) store.state.settings.terminal = checkTerminalLook(b.terminal);
     if (typeof b.autoUpdate === 'boolean') store.state.settings.autoUpdate = b.autoUpdate;
+    if (typeof b.teamTalk === 'boolean') store.state.settings.teamTalk = b.teamTalk;
     if (typeof b.startWithWindows === 'boolean' && !TEST_MODE) await startup.setEnabled(b.startWithWindows);
     store.save();
     return snapshot().settings;
@@ -929,6 +1224,8 @@ async function handle(req, res, isRemote = false) {
       if (!(req.method === 'GET' && PUBLIC_FILES.has(url.pathname))) return send(res, 401, { error: 'pair this phone first' });
     } else if (url.pathname.startsWith('/api/remote')) {
       return send(res, 403, { error: 'phone access is managed on the PC' });
+    } else if (url.pathname.startsWith('/api/team/')) {
+      return send(res, 403, { error: 'only sessions on this PC use this' });
     } else if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/ping')) {
       // Renew the year and move older Strict cookies to Lax.
       setDeviceCookie(res, remoteLib.cookieToken(req.headers.cookie));
@@ -945,7 +1242,7 @@ async function handle(req, res, isRemote = false) {
   if (!route) return send(res, 404, { error: 'not found' });
   try {
     const body = req.method === 'POST' ? await readBody(req) : {};
-    send(res, 200, await route(body, url));
+    send(res, 200, await route(body, url, req));
   } catch (e) {
     const code = Number.isInteger(e.code) ? e.code : 500;
     if (code === 500) log(`${url.pathname}: ${e.stack || e}`);

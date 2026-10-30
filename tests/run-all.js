@@ -18,6 +18,7 @@ const { trackClosures, Store, projectOf } = require('../lib/store');
 const library = require('../lib/library');
 const usage = require('../lib/usage');
 const { HostClient } = require('../lib/hostclient');
+const teams = require('../lib/teams');
 
 const WIN = process.platform === 'win32';
 // Harmless stand-ins for claude that print a marker, then wait for typing.
@@ -129,6 +130,61 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     for (let i = 0; i < 5; i++) assert.throws(() => r.pair(wrong, ''));
     assert.throws(() => r.pair(code, ''), /no pairing code/, 'the right code no longer works after 5 wrong ones');
     assert.strictEqual(r.check('cs_device=' + 'x'.repeat(43)), null);
+  });
+
+  await check('groups: keys, recipients, typing, last reply, members follow a reopened session', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-team-'));
+    const sec = teams.secret(dir);
+    assert.strictEqual(teams.secret(dir), sec, 'the secret is kept');
+    const { key, file } = teams.writeConfig(dir, ROOT, 8931);
+    const env = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers[teams.MCP_NAME].env;
+    assert.ok(teams.tokenOk(sec, key, env.CS_TEAM_TOKEN));
+    assert.ok(!teams.tokenOk(sec, key, 'f'.repeat(64)));
+    assert.ok(!teams.tokenOk(sec, '../x', env.CS_TEAM_TOKEN));
+    const g = { members: [{ tid: 'a', role: 'Research' }, { tid: 'b', role: 'Build' }, { tid: 'c', role: 'Docs' }] };
+    assert.deepStrictEqual(teams.recipients(g, 'a', 'build').map((m) => m.tid), ['b']);
+    assert.deepStrictEqual(teams.recipients(g, 'a', 'all').map((m) => m.tid), ['b', 'c']);
+    assert.deepStrictEqual(teams.recipients(g, 'a', 'Research'), [], 'never to itself');
+    assert.strictEqual(teams.typed('one\r\ntwo\x1b[31m', true), '\x1b[200~one\ntwo[31m\x1b[201~');
+    assert.strictEqual(teams.typed('one\n\ntwo', false), 'one two', 'without bracketed paste a newline would send early');
+    const tr = path.join(dir, 't.jsonl');
+    fs.writeFileSync(tr, [
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'first' }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'the answer' }, { type: 'tool_use', name: 'x' }] } },
+      { type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'subagent' }] } },
+      { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'y' }] } },
+    ].map((o) => JSON.stringify(o)).join('\n') + '\n');
+    assert.strictEqual(teams.lastReply(tr), 'the answer');
+    assert.strictEqual(teams.lastReply(path.join(dir, 'none.jsonl')), null);
+    const groups = [{ members: [{ tid: 'old', sid: ID1, role: 'Research' }] }];
+    assert.ok(teams.syncGroups(groups, [{ id: 'old', exited: true }, { id: 'new', exited: false, resumeId: ID1, sessionId: null }]));
+    assert.strictEqual(groups[0].members[0].tid, 'new', 'a reopened session takes its place in the group');
+    teams.syncGroups(groups, [{ id: 'new', exited: false, sessionId: ID2 }]);
+    assert.strictEqual(groups[0].members[0].sid, ID2, '/clear in the same terminal is followed');
+    const keys = { [key]: 'gone', keep: 'new' };
+    assert.ok(teams.pruneKeys(dir, keys, new Set(['new'])));
+    assert.deepStrictEqual(Object.keys(keys), ['keep']);
+    assert.ok(!fs.existsSync(file), 'the config of an ended terminal is removed');
+  });
+
+  await check('team MCP server: lists its tools and answers without the dashboard', async () => {
+    const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'team-mcp.js')], { env: { ...process.env, CS_TEAM_URL: 'http://127.0.0.1:9' }, windowsHide: true });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    const send = (o) => child.stdin.write(JSON.stringify(o) + '\n');
+    try {
+      send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
+      send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+      send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+      send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'send_message', arguments: { to: 'Build', message: 'hi' } } });
+      const lines = await until(() => { const l = out.split('\n').filter(Boolean); return l.length >= 3 && l; }, 10000);
+      const byId = Object.fromEntries(lines.map((l) => JSON.parse(l)).map((m) => [m.id, m]));
+      assert.ok(byId[1].result.instructions.includes('send_message'));
+      assert.deepStrictEqual(byId[2].result.tools.map((t) => t.name), ['team_info', 'send_message']);
+      assert.ok(byId[3].result.isError && /not reachable/.test(byId[3].result.content[0].text));
+    } finally {
+      child.kill();
+    }
   });
 
   await check('tasklist parsing keeps only claude.exe', () => {
@@ -446,7 +502,7 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: {
       ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
-      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), ...(WIN ? { CS_REMOTE_IP: REMOTE_IP, CS_REMOTE_DNS: SERVE_NAME } : {}),
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), CS_TEAM_RUN_LIMIT: '1', CS_TEAM_COOLDOWN: '0', ...(WIN ? { CS_REMOTE_IP: REMOTE_IP, CS_REMOTE_DNS: SERVE_NAME } : {}),
     },
     stdio: 'ignore', windowsHide: true,
   });
@@ -782,6 +838,94 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       const idle = await request(PORT, 'POST', '/api/move', { body: { sessionId: ID3, cols: 80, rows: 24 }, headers: H });
       assert.strictEqual(idle.status, 200, JSON.stringify(idle.json));
       assert.ok(idle.json.id);
+    });
+
+    await check('http: groups: new sessions side by side, a message waits until idle, then is typed in; a run of messages pauses', async () => {
+      let streamed = '';
+      const sreq = http.get({ host: '127.0.0.1', port: PORT, path: '/api/term/stream', headers: { Host: `127.0.0.1:${PORT}` } }, (res) => {
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (d) => {
+          buf += d;
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            const block = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (!block.startsWith('data: ')) continue;
+            const m = JSON.parse(block.slice(6));
+            if ((m.t === 'out' || m.t === 'replay') && m.data) streamed += Buffer.from(m.data, 'base64').toString('utf8');
+          }
+        });
+      });
+      const SA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const SB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const reg = (pid, sessionId, status) => fs.writeFileSync(path.join(fx.dir, 'sessions', `${pid}.json`),
+        JSON.stringify({ pid, sessionId, cwd: fx.work, startedAt: 10, status, kind: 'interactive' }));
+      const state = async () => (await request(PORT, 'GET', '/api/state')).json;
+      try {
+        const save = (body) => request(PORT, 'POST', '/api/groups/save', { body, headers: H });
+        assert.strictEqual((await save({ name: 'X', members: [{ role: 'A', cwd: fx.work }, { role: 'a', cwd: fx.work }] })).status, 400, 'two roles with one name');
+        assert.strictEqual((await save({ name: '', members: [] })).status, 400);
+        assert.strictEqual((await save({ name: 'X', members: [{ role: 'A', cwd: path.join(fx.dir, 'nope') }] })).status, 400, 'only known folders');
+        const r = await save({ name: 'Printcost', members: [{ role: 'Research', cwd: fx.work }, { role: 'Build', cwd: fx.work }], cols: 80, rows: 24 });
+        assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+        const gid = r.json.id;
+        const [ta, tb] = r.json.started;
+        assert.ok(ta && tb && ta !== tb);
+        const saved = JSON.parse(fs.readFileSync(path.join(data, 'state.json'), 'utf8'));
+        const keyOf = (tid) => Object.keys(saved.teamKeys).find((k) => saved.teamKeys[k] === tid);
+        const tokenOf = (k) => JSON.parse(fs.readFileSync(path.join(data, 'team', `${k}.json`), 'utf8')).mcpServers[teams.MCP_NAME].env.CS_TEAM_TOKEN;
+        const ka = keyOf(ta);
+        const kb = keyOf(tb);
+        assert.ok(ka && kb, 'each new session gets its own team key');
+        const T = (route, k, body, tok) => request(PORT, 'POST', `/api/team/${route}`, { body, headers: { ...H, 'X-Team-Key': k, 'X-Team-Token': tok || tokenOf(k) } });
+        assert.strictEqual((await T('info', ka, {}, 'f'.repeat(64))).status, 403, 'a wrong token is refused');
+        assert.strictEqual((await T('info', kb, {}, tokenOf(ka))).status, 403, 'one session cannot pose as another');
+        const info = await T('info', ka, {});
+        assert.ok(/You are "Research"/.test(info.json.text) && /- Build:/.test(info.json.text), info.json.text);
+        assert.strictEqual((await T('send', ka, { to: 'Docs', message: 'x' })).status, 400, 'unknown teammate');
+
+        const terms = await until(async () => { const l = (await state()).terminals.list.filter((t) => [ta, tb].includes(t.id) && t.pid); return l.length === 2 && l; }, 15000);
+        const pidOf = (tid) => terms.find((t) => t.id === tid).pid;
+        reg(pidOf(ta), SA, 'idle');
+        reg(pidOf(tb), SB, 'busy');
+        await until(async () => (await state()).live.some((s) => s.sessionId === SB));
+        const sent = await T('send', ka, { to: 'build', message: 'hello-build-123' });
+        assert.strictEqual(sent.status, 200, JSON.stringify(sent.json));
+        await sleep(3500);
+        let g = (await state()).groups.find((x) => x.id === gid);
+        assert.strictEqual(g.messages.length, 1);
+        assert.strictEqual(g.messages[0].deliveredAt, null, 'nothing is typed into a busy session');
+        assert.strictEqual(g.members.find((m) => m.tid === tb).sid, SB, 'members learn their session id');
+        reg(pidOf(tb), SB, 'idle');
+        await until(() => strip(streamed).includes('hello-build-123'), 15000);
+        assert.ok(strip(streamed).includes('Team message from Research'));
+        await until(async () => (await state()).groups.find((x) => x.id === gid).messages[0].deliveredAt);
+
+        // The test limit is one agent message in a row: the answer waits until the user lets them continue.
+        assert.strictEqual((await T('send', kb, { to: 'Research', message: 'answer-456' })).status, 200);
+        await until(async () => (await state()).groups.find((x) => x.id === gid).paused, 10000);
+        assert.ok(!strip(streamed).includes('answer-456'));
+        assert.strictEqual((await request(PORT, 'POST', '/api/groups/continue', { body: { id: gid }, headers: H })).status, 200);
+        await until(() => strip(streamed).includes('answer-456'), 15000);
+
+        const lay = (body) => request(PORT, 'POST', '/api/groups/layout', { body: { id: gid, ...body }, headers: H });
+        assert.strictEqual((await lay({ layout: 'grid', order: [tb, ta], sizes: [2, 1] })).status, 200);
+        assert.strictEqual((await lay({ layout: 'tabs' })).status, 400);
+        assert.strictEqual((await lay({ order: [ta] })).status, 400, 'order must list every session');
+        g = (await state()).groups.find((x) => x.id === gid);
+        assert.deepStrictEqual([g.layout, g.members.map((m) => m.role), g.sizes], ['grid', ['Build', 'Research'], [2, 1]]);
+        // Moving a session into another group takes it out of this one.
+        const other = await save({ name: 'Other', members: [{ role: 'Solo', tid: ta }] });
+        assert.strictEqual(other.status, 200);
+        g = (await state()).groups.find((x) => x.id === gid);
+        assert.deepStrictEqual(g.members.map((m) => m.role), ['Build']);
+        for (const id of [gid, other.json.id]) assert.strictEqual((await request(PORT, 'POST', '/api/groups/delete', { body: { id }, headers: H })).status, 200);
+        assert.strictEqual((await state()).groups.length, 0);
+        assert.ok((await state()).terminals.list.some((t) => t.id === ta && !t.exited), 'deleting a group leaves its sessions running');
+      } finally {
+        sreq.destroy();
+      }
     });
   } finally {
     srv.kill();

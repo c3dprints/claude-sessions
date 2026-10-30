@@ -2,6 +2,18 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.8 (2026-10-30)
+
+Groups: sessions side by side that work together.
+
+- **Groups** (sidebar, under Projects): give a group a name, an optional project, and up to 6 sessions, each with a role like Research or Build. Start new sessions for it in any project or recent folder, or take sessions already running in the app. A project's page lists its groups and has **+ New group**.
+- A group opens all its sessions in one window: **Side by side**, **Stacked** or **Grid**. Drag a pane's title bar onto another pane to swap them, and drag the gap between two panes to resize them. The layout is kept. **⤢** opens one session full size. On a phone a group is a list with an Open button for each session.
+- **Sessions in a group can message each other.** Sessions started in the app get two tools, `team_info` and `send_message` (a small MCP server, allowed without asking). A message is typed into the teammate's session as a prompt once that session is idle, never into a question it is asking you. **Messages** shows everything they sent each other.
+- **Pass reply ▸** on a pane sends that session's last answer to another one by hand.
+- After 20 messages in a row with nobody typing, the group pauses until you click **Let them continue**, so two sessions can not keep each other busy forever.
+- A session started before this version has no team tools; **Connect** restarts it (same conversation, once it is idle) with them. Settings, Groups, turns the tools off for new sessions.
+- A session that ends or is reopened keeps its place in the group.
+
 ## 1.5.7 (2026-10-30)
 
 The phone layout fits the screen.
