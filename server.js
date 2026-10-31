@@ -80,9 +80,11 @@ async function poll() {
 
 let historyCache = { at: 0, key: '', items: [] };
 
-// Sessions put in a project by hand stay listed past the 14 days, so a project keeps them together.
+// Sessions put in a project by hand stay listed past the 14 days, so a project keeps them together;
+// archived and hidden ones too, so they can always be brought back.
 function keptIds() {
-  return new Set(Object.entries(store.state.assign).filter(([, p]) => p !== 'none').map(([id]) => id));
+  const ids = Object.entries(store.state.assign).filter(([, p]) => p !== 'none').map(([id]) => id);
+  return new Set([...ids, ...Object.keys(store.state.archived), ...Object.keys(store.state.hidden)]);
 }
 
 function getHistory(excludeIds) {
@@ -103,13 +105,16 @@ function appTerminals() {
 
 function snapshot() {
   const nick = store.state.nicknames;
-  const terms = appTerminals();
+  const terms = appTerminals().map((t) => ({ ...t, paused: pausedTerms.has(t.id) }));
   const appByPid = new Map(terms.filter((t) => t.pid && !t.exited).map((t) => [t.pid, t.id]));
   const liveIds = new Set(live.map((s) => s.sessionId));
   const closed = store.state.closed.filter((c) => !liveIds.has(c.sessionId));
   const closedIds = new Set(closed.map((c) => c.sessionId));
   const history = getHistory(new Set([...liveIds, ...closedIds]));
-  const withNick = (s) => ({ ...s, nickname: nick[s.sessionId] || null, project: projectOf(store.state, s) });
+  const withNick = (s) => ({
+    ...s, nickname: nick[s.sessionId] || null, project: projectOf(store.state, s),
+    archived: store.state.archived[s.sessionId] || null, hidden: store.state.hidden[s.sessionId] || null,
+  });
   return {
     app: { name: 'Claude Sessions', version: pkg.version, platform: process.platform },
     now: Date.now(),
@@ -283,6 +288,7 @@ async function startTerminal(cwd, resumeId, b) {
 
 const bracketed = new Map(); // terminal id -> its program turned on bracketed paste
 const lastDelivery = new Map(); // terminal id -> when a message was last typed into it
+const pausedTerms = new Set(); // terminals stopped with Pause; team messages wait until Continue or the user types
 let teamSecret = null;
 
 function secretKey() { return teamSecret || (teamSecret = teams.secret(DATA_DIR)); }
@@ -300,6 +306,30 @@ function trackPasteMode(msg) {
 }
 
 function connectedTids() { return new Set(Object.values(store.state.teamKeys)); }
+
+// Ends a session running outside the app (Windows Terminal or Terminal) by its process.
+async function endOutside(s) {
+  if (TEST_MODE) return;
+  if (platform.WIN) {
+    await new Promise((resolve) => execFile('taskkill', ['/PID', String(s.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
+  } else {
+    try { process.kill(s.pid, 'SIGTERM'); } catch { /* already gone */ }
+    if (!(await processGone(s.pid, 5000))) try { process.kill(s.pid, 'SIGKILL'); } catch { /* gone */ }
+  }
+  if (!(await processGone(s.pid, 8000))) throw fail(500, `the session did not close in ${platform.WIN ? 'Windows Terminal' : 'Terminal'}`);
+  live = live.filter((x) => x.pid !== s.pid);
+}
+
+async function endSession(sessionId) {
+  const s = live.find((x) => x.sessionId === sessionId);
+  if (!s) throw fail(404, 'that session is not open');
+  const t = appTerminals().find((x) => x.pid === s.pid && !x.exited);
+  if (t) {
+    await host.request({ t: 'kill', id: t.id });
+    pausedTerms.delete(t.id);
+  } else await endOutside(s);
+  log(`session ${sessionId} ended from the dashboard`);
+}
 
 function liveOfTerm(t) { return t && t.pid && !t.exited ? live.find((x) => x.pid === t.pid) || null : null; }
 
@@ -345,7 +375,7 @@ async function deliver(terms) {
       for (const to of new Set(waiting.filter((m) => !m.error).map((m) => m.to))) {
         const t = terms.find((x) => x.id === to);
         const mine = waiting.filter((m) => m.to === to && !m.error);
-        if (!t || t.exited) continue; // waits until the session is reopened
+        if (!t || t.exited || pausedTerms.has(to)) continue; // waits until the session is reopened or continued
         const s = liveOfTerm(t);
         // Only into an idle prompt: typing into a permission prompt would answer it.
         if (!s || s.status !== 'idle' || Date.now() - (lastDelivery.get(to) || 0) < teams.COOLDOWN_MS) continue;
@@ -657,21 +687,53 @@ const routes = {
 
   // Bring a Windows Terminal session into the app: end it there, resume it here.
   // Only while idle, so no running work or open permission prompt is cut off.
+  // Ends any open session: one in the app through the host, one in Windows Terminal (or Terminal) by its process.
+  'POST /api/session/end': async (b) => {
+    await endSession(String(b.sessionId));
+    return { ok: true };
+  },
+
+  // archived / hidden: true or false. Archiving an open session ends it first.
+  'POST /api/session/mark': async (b) => {
+    const id = String(b.sessionId);
+    if (!sessions.UUID_RE.test(id)) throw fail(400, 'bad session id');
+    if (b.archived === true && live.some((x) => x.sessionId === id)) await endSession(id);
+    for (const k of ['archived', 'hidden']) {
+      if (b[k] === true) store.state[k][id] = Date.now();
+      else if (b[k] === false) delete store.state[k][id];
+    }
+    if (b.archived === true) delete store.state.hidden[id];
+    store.save();
+    historyCache.at = 0;
+    return { ok: true };
+  },
+
+  // Pause = Esc, which stops what Claude is doing; the session stays open. Continue types "continue".
+  'POST /api/term/pause': async (b) => {
+    const t = termOf(b.id);
+    if (t.exited) throw fail(409, 'that session has ended');
+    await host.request({ t: 'input', id: t.id, data: '\x1b' });
+    pausedTerms.add(t.id);
+    log(`terminal ${t.id} paused`);
+    return { ok: true };
+  },
+
+  'POST /api/term/continue': async (b) => {
+    const t = termOf(b.id);
+    if (t.exited) throw fail(409, 'that session has ended');
+    pausedTerms.delete(t.id);
+    await host.request({ t: 'input', id: t.id, data: 'continue' });
+    await new Promise((r) => setTimeout(r, 150));
+    await host.request({ t: 'input', id: t.id, data: '\r' });
+    return { ok: true };
+  },
+
   'POST /api/move': async (b) => {
     const s = live.find((x) => x.sessionId === b.sessionId);
     if (!s) throw fail(404, 'that session is not open');
     if (appTerminals().some((t) => t.pid === s.pid && !t.exited)) throw fail(409, 'already in the app');
     if (s.status !== 'idle') throw fail(409, 'wait until it is idle, then move it');
-    if (!TEST_MODE) {
-      if (platform.WIN) {
-        await new Promise((resolve) => execFile('taskkill', ['/PID', String(s.pid), '/T', '/F'], { windowsHide: true }, () => resolve()));
-      } else {
-        try { process.kill(s.pid, 'SIGTERM'); } catch { /* already gone */ }
-        if (!(await processGone(s.pid, 5000))) try { process.kill(s.pid, 'SIGKILL'); } catch { /* gone */ }
-      }
-      if (!(await processGone(s.pid, 8000))) throw fail(500, `the session did not close in ${platform.WIN ? 'Windows Terminal' : 'Terminal'}`);
-      live = live.filter((x) => x.pid !== s.pid);
-    }
+    await endOutside(s);
     log(`moving ${s.sessionId} from Windows Terminal into the app`);
     return startTerminal(s.cwd, s.sessionId, b);
   },
@@ -681,6 +743,7 @@ const routes = {
     if (typeof b.data !== 'string') throw fail(400, 'data must be text');
     if (t.exited) throw fail(409, 'that session has ended');
     await host.request({ t: 'input', id: t.id, data: b.data });
+    pausedTerms.delete(t.id);
     // Someone is at the keyboard: the group's count of agent messages in a row starts over.
     const g = teams.groupOf(store.state.groups, t.id);
     if (g && g.run && !g.paused) g.run = 0;

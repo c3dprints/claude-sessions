@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.10 (2026-10-31)
+
+Right-click a session.
+
+- **Right-click** (or long-press on a phone) any session in the sidebar, an Open now card, or a Recently closed or History row for a menu: Open (or Go to tab, or Reopen), Rename, **Move to project**, **Pause**, **End session**, **Hide** and **Archive**.
+- **Pause** stops what Claude is doing in a session in the app (like pressing Esc); the session stays open and **Continue** in the same menu picks up where it stopped. Messages from a group wait while a session is paused.
+- **End session** now works for sessions in Windows Terminal too. Ending or archiving an open session asks once more in the menu.
+- **Hide** takes a session off the sidebar and lists; it keeps running. **Archive** ends it if it is open and files it away. Both are listed under **Archived and hidden** at the bottom of All sessions, with Unhide and Unarchive, and are kept there however old they are.
+
 ## 1.5.9 (2026-10-30)
 
 - The app is open source under the MIT license (LICENSE).

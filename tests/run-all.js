@@ -565,6 +565,25 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(s.live.find((x) => x.sessionId === ID1).nickname, null);
     });
 
+    await check('http: hide and archive take a session out of the lists and bring it back', async () => {
+      const get = async () => (await request(PORT, 'GET', '/api/state')).json.live.find((x) => x.sessionId === ID1);
+      assert.strictEqual((await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: ID1, hidden: true }, headers: H })).status, 200);
+      assert.ok((await get()).hidden);
+      await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: ID1, hidden: false }, headers: H });
+      assert.strictEqual((await get()).hidden, null);
+      // Archiving a hidden session clears hidden, so it is listed once.
+      await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: ID1, hidden: true }, headers: H });
+      await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: ID1, archived: true }, headers: H });
+      let s = await get();
+      assert.ok(s.archived && !s.hidden);
+      await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: ID1, archived: false }, headers: H });
+      s = await get();
+      assert.ok(!s.archived && !s.hidden);
+      assert.strictEqual((await request(PORT, 'POST', '/api/session/mark', { body: { sessionId: 'nope', hidden: true }, headers: H })).status, 400);
+      assert.strictEqual((await request(PORT, 'POST', '/api/session/end', { body: { sessionId: '00000000-0000-4000-8000-000000000000' }, headers: H })).status, 404);
+      assert.strictEqual((await request(PORT, 'POST', '/api/term/pause', { body: { id: 'nope' }, headers: H })).status, 404);
+    });
+
     await check('http: resume of an open session is refused', async () => {
       const r = await request(PORT, 'POST', '/api/resume', { body: { sessionId: ID1 }, headers: H });
       assert.strictEqual(r.status, 409);
@@ -872,6 +891,15 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
         const gid = r.json.id;
         const [ta, tb] = r.json.started;
         assert.ok(ta && tb && ta !== tb);
+        // Pause marks the terminal (team messages wait for it); Continue and typing clear it.
+        const pausedOf = async (tid) => (await state()).terminals.list.find((t) => t.id === tid).paused;
+        assert.strictEqual((await request(PORT, 'POST', '/api/term/pause', { body: { id: ta }, headers: H })).status, 200);
+        assert.strictEqual(await pausedOf(ta), true);
+        assert.strictEqual((await request(PORT, 'POST', '/api/term/continue', { body: { id: ta }, headers: H })).status, 200);
+        assert.strictEqual(await pausedOf(ta), false);
+        await request(PORT, 'POST', '/api/term/pause', { body: { id: ta }, headers: H });
+        await request(PORT, 'POST', '/api/term/input', { body: { id: ta, data: '' }, headers: H });
+        assert.strictEqual(await pausedOf(ta), false);
         const saved = JSON.parse(fs.readFileSync(path.join(data, 'state.json'), 'utf8'));
         const keyOf = (tid) => Object.keys(saved.teamKeys).find((k) => saved.teamKeys[k] === tid);
         const tokenOf = (k) => JSON.parse(fs.readFileSync(path.join(data, 'team', `${k}.json`), 'utf8')).mcpServers[teams.MCP_NAME].env.CS_TEAM_TOKEN;

@@ -96,7 +96,14 @@
   .menu-pop hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
   #pmenu { position: fixed; right: auto; top: auto; min-width: 220px; z-index: 40; }
   #pmenu[hidden] { display: none; }
-
+  #pmenu button.danger { color: var(--danger, #e5534b); }
+  #pmenu button:disabled { opacity: .45; cursor: default; background: none; }
+  #pmenu .k { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+  #arcWrap summary { list-style: none; cursor: pointer; }
+  #arcWrap summary::-webkit-details-marker { display: none; }
+  #arcWrap summary h2::before { content: '▸ '; color: var(--muted); }
+  #arcWrap[open] summary h2::before { content: '▾ '; }
+  .item .tag { color: var(--muted); font-size: 11.5px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
   .layout { flex: 1; display: grid; grid-template-columns: 264px 1fr; min-height: 0; }
   nav.side { border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
   .side-scroll { flex: 1; overflow-y: auto; padding: 10px 8px 16px; }
@@ -509,6 +516,11 @@
           <input class="search" id="search" type="search" placeholder="Search titles, prompts, folders" autocomplete="off">
         </h2>
         <div class="list" id="history"></div>
+
+        <details id="arcWrap" hidden>
+          <summary><h2>Archived and hidden <span class="count" id="arcCount"></span></h2></summary>
+          <div class="list" id="arc"></div>
+        </details>
       </div>
     </section>
 
@@ -788,6 +800,8 @@ function statusOf(s) {
 function project(id) { return S && id ? S.projects.find((p) => p.id === id) || null : null; }
 function inProject(s) { return !projFilter || s.project === projFilter; }
 function anySession(id) { return S ? [...S.live, ...S.closed, ...S.history].find((x) => x.sessionId === id) : null; }
+// Archived and hidden sessions are only listed under Archived and hidden.
+function visible(s) { return !s.archived && !s.hidden; }
 
 // ---- markdown --------------------------------------------------------------------
 // A small renderer for wiki, memory and skill files. Text is escaped first and
@@ -1355,6 +1369,7 @@ function renderSide() {
     const s = S.live.find((x) => x.appId === t.id);
     if (s) lastKnown.set(t.id, s);
     const known = s || lastKnown.get(t.id);
+    if (known && !visible(anySession(known.sessionId) || known)) return '';
     const st = t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
     const title = known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
     return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}"${known ? ` draggable="true" data-sid="${esc(known.sessionId)}"` : ''}>
@@ -1362,7 +1377,7 @@ function renderSide() {
   });
   $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
   renderSideGroups();
-  const wt = S.live.filter((s) => !s.appId);
+  const wt = S.live.filter((s) => !s.appId && visible(s));
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
     return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its ${WT} tab">
@@ -1415,7 +1430,7 @@ function renderProjHead() {
 }
 
 function renderLive() {
-  const shown = S.live.filter(inProject);
+  const shown = S.live.filter(inProject).filter(visible);
   $('#liveCount').textContent = shown.length;
   if (!shown.length) {
     $('#live').html = `<div class="empty">${projFilter ? 'No session of this project is open.' : 'No Claude sessions are open. Start one with <b>+ New session</b>.'}</div>`;
@@ -1463,7 +1478,7 @@ function itemHtml(s, closed) {
 }
 
 function renderClosed() {
-  const shown = S.closed.filter(inProject);
+  const shown = S.closed.filter(inProject).filter(visible);
   $('#closedWrap').hidden = !shown.length;
   $('#closedCount').textContent = shown.length;
   $('#closed').html = shown.map((c) => itemHtml(c, true)).join('');
@@ -1471,12 +1486,126 @@ function renderClosed() {
 
 function renderHistory() {
   const q = $('#search').value.trim().toLowerCase();
-  const all = S.history.filter(inProject).filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
+  const all = S.history.filter(inProject).filter(visible).filter((h) => !q || [label(h), h.title, h.firstPrompt, h.lastPrompt, h.cwd].some((x) => x && x.toLowerCase().includes(q)));
   $('#histCount').textContent = all.length;
   const shown = all.slice(0, histLimit);
   $('#history').html = shown.length
     ? shown.map((h) => itemHtml(h, false)).join('') + (all.length > shown.length ? `<button class="more" data-act="more">Show ${Math.min(15, all.length - shown.length)} more</button>` : '')
     : `<div class="empty" style="border:0">${q ? 'Nothing matches that search.' : projFilter ? 'No past sessions in this project yet. Use Add sessions… or drag sessions onto it in the sidebar.' : 'No other sessions in the last 14 days.'}</div>`;
+}
+
+function renderArchived() {
+  const seen = new Set();
+  const all = [...S.live, ...S.closed, ...S.history].filter((s) => !visible(s) && inProject(s) && !seen.has(s.sessionId) && seen.add(s.sessionId))
+    .sort((a, b) => (b.archived || b.hidden) - (a.archived || a.hidden));
+  $('#arcWrap').hidden = !all.length;
+  $('#arcCount').textContent = all.length;
+  $('#arc').html = all.map((s) => {
+    const open = S.live.includes(s);
+    const go = open
+      ? (s.appId ? `<button class="btn" data-act="open" data-tid="${esc(s.appId)}">Open</button>` : `<button class="btn" data-act="focus" data-id="${esc(s.sessionId)}">Go to tab</button>`)
+      : `<button class="btn" data-act="resume" data-id="${esc(s.sessionId)}">Reopen</button>`;
+    const back = s.archived
+      ? `<button class="btn ghost" data-act="mark" data-id="${esc(s.sessionId)}" data-k="archived" data-v="0">Unarchive</button>`
+      : `<button class="btn ghost" data-act="mark" data-id="${esc(s.sessionId)}" data-k="hidden" data-v="0">Unhide</button>`;
+    return `<div class="item" data-sid="${esc(s.sessionId)}">
+      <div class="t">${esc(label(s))}</div>
+      <div class="a">${go}${back}</div>
+      <div class="s"><span class="tag">${s.archived ? 'archived' : open ? 'hidden, still running' : 'hidden'} ${ago(s.archived || s.hidden)}</span>${pchip(s)}<span class="path" title="${esc(s.cwd)}">${esc(home(s.cwd))}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// ---- right-click menu on a session ---------------------------------------------------------
+
+let cmFor = null; // { sid, tid, armed }
+function openCmenu(x, y, sid, tid) {
+  const s = sid ? anySession(sid) : (S.live.find((v) => v.appId === tid) || null);
+  const t = tid ? S.terminals.list.find((v) => v.id === tid) : (s && s.appId ? S.terminals.list.find((v) => v.id === s.appId) : null);
+  if (!s && !t) return;
+  cmFor = { sid: s ? s.sessionId : null, tid: t ? t.id : null, armed: cmFor && cmFor.armed && cmFor.sid === (s && s.sessionId) ? cmFor.armed : null, x, y };
+  renderCmenu();
+}
+
+function renderCmenu(sub) {
+  const s = cmFor.sid ? anySession(cmFor.sid) : null;
+  const t = cmFor.tid ? S.terminals.list.find((v) => v.id === cmFor.tid) : null;
+  const open = !!(s && S.live.includes(s)) || !!(t && !t.exited);
+  const inApp = t && !t.exited;
+  const item = (op, text, extra = '') => `<button data-act="cm" data-op="${op}"${extra}>${text}</button>`;
+  let h;
+  if (sub === 'project') {
+    pmenuFor = s.sessionId;
+    h = `<div class="hint">Move to project</div>` +
+      S.projects.map((p) => `<button data-act="assign" data-pid="${esc(p.id)}" class="${s.project === p.id ? 'on' : ''}"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}${s.project === p.id ? ' ✓' : ''}</button>`).join('') +
+      `<button data-act="assign" data-pid="none" class="${!s.project ? 'on' : ''}">No project${!s.project ? ' ✓' : ''}</button>` +
+      '<hr><button data-act="assign" data-pid="auto" title="Forget the choice made by hand; the folder decides">Go by folder</button>' +
+      '<button data-act="proj-new" data-for="1">New project…</button>';
+  } else {
+    const busy = s && s.status === 'busy';
+    h = `<div class="hint">${esc(s ? label(s) : 'New session')}</div>`;
+    if (inApp) h += item('open', 'Open');
+    else if (open) h += item('focus', `Go to its ${WT} tab`);
+    else if (s) h += item('resume', 'Reopen');
+    if (s) h += item('rename', 'Rename…') + item('project', 'Move to project <span class="k">▸</span>');
+    if (inApp) {
+      h += '<hr>' + (t.paused && !busy
+        ? item('continue', 'Continue', ' title="Types continue, so Claude picks up where it stopped"')
+        : item('pause', 'Pause', busy ? ' title="Presses Esc: Claude stops what it is doing and the session stays open"' : ' disabled title="Only while it is working"'));
+    }
+    if (open) {
+      h += (inApp ? '' : '<hr>') + (cmFor.armed === 'end'
+        ? item('end', '<b>Click again to end it</b>', ' class="danger"')
+        : item('end', 'End session', ' class="danger"'));
+    }
+    if (s) {
+      h += '<hr>' + item('hide', s.hidden ? 'Unhide' : 'Hide', s.hidden ? '' : ` title="Takes it off the sidebar and lists${open ? '; it keeps running' : ''}. Find it under Archived and hidden."`);
+      h += s.archived ? item('unarchive', 'Unarchive')
+        : cmFor.armed === 'archive' ? item('archive', '<b>Click again: end and archive</b>', ' class="danger"')
+          : item('archive', 'Archive', ` title="${open ? 'Ends it and files' : 'Files'} it under Archived and hidden"`);
+    }
+  }
+  const m = $('#pmenu');
+  m.innerHTML = h;
+  m.hidden = false;
+  m.style.left = Math.max(8, Math.min(cmFor.x, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(cmFor.y, innerHeight - m.offsetHeight - 8)) + 'px';
+}
+
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.xterm, input, textarea')) return;
+  const el = e.target.closest('nav.side [data-sid], nav.side [data-tid], #live [data-sid], #closed [data-sid], #history [data-sid], #arc [data-sid], #gPanes [data-tid]');
+  if (!el) return;
+  const sid = el.dataset.sid || (el.closest('[data-sid]') || {}).dataset?.sid || null;
+  e.preventDefault();
+  cmFor = null;
+  openCmenu(e.clientX, e.clientY, sid, sid ? null : el.dataset.tid);
+});
+
+async function cmenuAction(op) {
+  const { sid, tid } = cmFor;
+  const s = sid ? anySession(sid) : null;
+  const open = !!(s && S.live.includes(s)) || !!(tid && S.terminals.list.some((v) => v.id === tid && !v.exited));
+  // Ending something asks once more in the menu itself.
+  if ((op === 'end' || (op === 'archive' && open)) && cmFor.armed !== op) { cmFor.armed = op; renderCmenu(); return; }
+  closePmenu();
+  switch (op) {
+    case 'open': show(tid); break;
+    case 'focus': act('/api/focus', { sessionId: sid }); break;
+    case 'resume': openNew('/api/resume', { sessionId: sid }, 'Reopening…'); break;
+    case 'rename': {
+      const v = window.prompt('Name this session (empty puts the original title back)', s.nickname || s.title || '');
+      if (v !== null) act('/api/rename', { sessionId: sid, name: v }, 'Saved');
+      break;
+    }
+    case 'project': renderCmenu('project'); break;
+    case 'pause': act('/api/term/pause', { id: tid }, 'Paused; it stays open'); break;
+    case 'continue': act('/api/term/continue', { id: tid }, 'Continuing'); break;
+    case 'end': sid && S.live.some((v) => v.sessionId === sid) ? act('/api/session/end', { sessionId: sid }, 'Ending session…') : act('/api/term/kill', { id: tid }, 'Ending session…'); break;
+    case 'hide': act('/api/session/mark', { sessionId: sid, hidden: !s.hidden }, s.hidden ? 'Back in the lists' : 'Hidden; it is under Archived and hidden'); break;
+    case 'archive': act('/api/session/mark', { sessionId: sid, archived: true }, open ? 'Ended and archived' : 'Archived'); break;
+    case 'unarchive': act('/api/session/mark', { sessionId: sid, archived: false }, 'Back in the lists'); break;
+  }
 }
 
 // ---- updates and settings ----------------------------------------------------------------
@@ -2344,6 +2473,7 @@ function render() {
   if (!editing) renderLive();
   renderClosed();
   renderHistory();
+  renderArchived();
 }
 
 let refreshing = null;
@@ -2443,6 +2573,8 @@ document.addEventListener('click', async (e) => {
     }
     case 'resume-wt': b.disabled = true; await act('/api/resume', { sessionId: id, where: 'terminal' }, `Reopening in ${WT}…`); break;
     case 'dismiss': act('/api/closed/dismiss', { sessionId: id }); break;
+    case 'cm': await cmenuAction(b.dataset.op); break;
+    case 'mark': b.disabled = true; await act('/api/session/mark', { sessionId: id, [b.dataset.k]: b.dataset.v === '1' }, 'Back in the lists'); break;
     case 'rename': editing = id; renderLive(); break;
     case 'new': $('#newMenu').open = false; await openNew('/api/new', { cwd: b.dataset.cwd }, 'Starting Claude…'); break;
     case 'kill':
