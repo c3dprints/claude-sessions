@@ -2,6 +2,11 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.9 (2026-10-30)
+
+- The app is open source under the MIT license (LICENSE).
+- New installs start with no wiki folder; pick one under Wiki, **Folders**. A folder you already use is kept.
+
 ## 1.5.8 (2026-10-30)
 
 Groups: sessions side by side that work together.
@@ -75,7 +80,7 @@ Runs on macOS too. Windows works as before.
 - Cmd+C copies and Cmd+V pastes; Ctrl+C always reaches Claude; an image on the clipboard is sent as Ctrl+V, the key Claude Code reads images on in macOS.
 - `scripts/build-mac.sh` builds **Claude Sessions.app** into `~/Applications`; `scripts/install-mac.sh` installs from the newest release tag, like `install.ps1`.
 - The status line command quotes its paths (the Mac data folder has a space) and names node in full.
-- The wiki folder list starts empty on a Mac (the default `\\Mobius\Chris` share is a Windows path).
+- The wiki folder list starts empty on a Mac (the default share is a Windows path).
 
 ## 1.4.1 (2026-10-29)
 
@@ -115,7 +120,7 @@ Projects, plan usage, context, skills and the wiki, all in the app.
 - **Plan usage in the header**: how much of the current 5-hour session and of the week you have used, with the time left until each resets. Claude Code only shares these numbers with its status line, so **Turn on** (under Context and usage) adds a small status line that saves them for the app. It also shows the model, context and usage at the bottom of every Claude terminal. It never replaces a status line you already have, and **Turn off** removes it.
 - **Context and usage** view, like `/context`: a square grid of each open session's context window, split into what the session started with, memory files and the conversation, plus free space and where your settings compact it. Every session card and terminal bar shows its context percentage too.
 - **Skills**: every skill and command Claude can use (personal, claude.ai, plugins, projects), searchable and filterable, with the full instructions of each one and how many tokens it costs.
-- **Wiki**: the pages of the wiki on `\\Mobius\Chris` and everything in Claude's memory, searchable, with tables and links between pages. **Folders** changes where the wiki lives.
+- **Wiki**: the pages of the wiki folder and everything in Claude's memory, searchable, with tables and links between pages. **Folders** changes where the wiki lives.
 
 ## 1.1.0 (2026-10-28)
 

@@ -1,7 +1,8 @@
 {
   "name": "claude-sessions",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "description": "Local app for every Claude Code session: built-in terminals, live status, one-click reopen.",
+  "license": "MIT",
   "main": "server.js",
   "private": true,
   "scripts": {

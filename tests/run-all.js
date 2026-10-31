@@ -121,7 +121,7 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
 
   await check('phone access: tailnet range, device names, a code dies after 5 wrong tries', () => {
     const rl = require('../lib/remote');
-    assert.ok(rl.isTailnetPeer('100.66.198.118') && rl.isTailnetPeer('::ffff:100.64.0.1'));
+    assert.ok(rl.isTailnetPeer('100.101.102.103') && rl.isTailnetPeer('::ffff:100.64.0.1'));
     assert.ok(!rl.isTailnetPeer('100.63.0.1') && !rl.isTailnetPeer('100.128.0.1') && !rl.isTailnetPeer('192.168.1.5'));
     assert.strictEqual(rl.deviceName('Mozilla/5.0 (Linux; Android 15) Chrome/130.0 Mobile Safari/537.36'), 'Android, Chrome');
     const r = new rl.Remote(fs.mkdtempSync(path.join(os.tmpdir(), 'cs-remote-')));

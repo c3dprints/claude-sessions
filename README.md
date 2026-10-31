@@ -12,7 +12,7 @@ A local app for every Claude Code session on this PC or Mac: run sessions in bui
 - **Projects**: name, color and folders. Sessions in a project's folders join it by themselves; any session can be put in or kept out of a project by hand, from its chip, by dragging it onto the project in the sidebar, or many at once with **Add sessions…** (lists every session of any age). Each project has its own page, which keeps its sessions however old they are.
 - **Plan usage** in the header (current 5-hour session and week, with reset times) and a **Context and usage** view that splits each session's context window like `/context`.
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
-- **Wiki**: the markdown pages in the wiki folders (`\\Mobius\Chris` by default) and Claude's auto memory, searchable.
+- **Wiki**: the markdown pages in the wiki folders (picked under **Folders**) and Claude's auto memory, searchable.
 - **Settings** (gear, bottom left): updates, Start with Windows, app theme (System, Dark, Light) and the terminal look (7 own looks, 15 popular themes such as Dracula, Nord and Catppuccin, or your own colors; text size). The icon next to **All sessions** checks for updates in one click.
 - **Phone access** (Settings, off by default): use the app from a phone over Tailscale. Settings shows the Tailscale IP, port and address; a phone pairs once with a 6 digit code. **Set up HTTPS** turns on Tailscale Serve (https://<pc>.<tailnet>.ts.net) so the phone can install it as an app. On small screens the sidebar is a drawer and terminals get an Esc / Tab / arrows / Enter / Ctrl+C key row.
 - **Rename**, **New session** in a recent or project folder, **self-update**.
@@ -101,3 +101,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `launch.js` + `scripts/launch.vbs` | One-click launcher (no console window) |
 | `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
 | `public/index.html` | The app |
+
+## License
+
+MIT, see [LICENSE](LICENSE). xterm.js (in `public/vendor`) is MIT too, see `public/vendor/LICENSE-xterm.txt`.
