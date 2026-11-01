@@ -616,6 +616,17 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(ok.status, 200);
     });
 
+    await check('http: remove takes a running terminal off the In this app list (ending it first)', async () => {
+      const r = await request(PORT, 'POST', '/api/new', { body: { cwd: fx.work }, headers: H });
+      assert.strictEqual(r.status, 200);
+      const listed = async () => (await request(PORT, 'GET', '/api/state')).json.terminals.list.some((x) => x.id === r.json.id);
+      assert.ok(await listed());
+      const rm = await request(PORT, 'POST', '/api/term/remove', { body: { id: r.json.id }, headers: H });
+      assert.strictEqual(rm.status, 200, JSON.stringify(rm.json));
+      assert.ok(!(await listed()));
+      assert.strictEqual((await request(PORT, 'POST', '/api/term/remove', { body: { id: r.json.id }, headers: H })).status, 404);
+    });
+
     await check('http: oversized body is rejected', async () => {
       const r = await request(PORT, 'POST', '/api/rename', { body: { sessionId: ID1, name: 'x'.repeat(300000) }, headers: H });
       assert.strictEqual(r.status, 413);
@@ -943,6 +954,16 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
         assert.strictEqual((await lay({ order: [ta] })).status, 400, 'order must list every session');
         g = (await state()).groups.find((x) => x.id === gid);
         assert.deepStrictEqual([g.layout, g.members.map((m) => m.role), g.sizes], ['grid', ['Build', 'Research'], [2, 1]]);
+        // Grid shares and free pane boxes are kept; a swap takes each box along with its session.
+        assert.strictEqual((await lay({ grid: { across: 2, cols: [0.7, 0.3], rows: [1] } })).status, 200);
+        assert.strictEqual((await lay({ grid: { across: 9, cols: [1], rows: [1] } })).status, 400);
+        const bx = [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0.25, w: 0.5, h: 0.5 }];
+        assert.strictEqual((await lay({ layout: 'free', boxes: bx })).status, 200);
+        assert.strictEqual((await lay({ boxes: [{ x: 0, y: 0, w: 0, h: 1 }, bx[1]] })).status, 400, 'a pane needs some size');
+        assert.strictEqual((await lay({ boxes: [bx[0]] })).status, 400, 'one box per session');
+        assert.strictEqual((await lay({ order: [ta, tb] })).status, 200);
+        g = (await state()).groups.find((x) => x.id === gid);
+        assert.deepStrictEqual([g.layout, g.grid.cols, g.boxes], ['free', [0.7, 0.3], [bx[1], bx[0]]]);
         // Moving a session into another group takes it out of this one.
         const other = await save({ name: 'Other', members: [{ role: 'Solo', tid: ta }] });
         assert.strictEqual(other.status, 200);

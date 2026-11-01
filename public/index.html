@@ -376,6 +376,26 @@
   .g-body { flex: 1; display: flex; min-height: 0; }
   .g-panes { flex: 1; display: grid; min-width: 0; min-height: 0; padding: 6px; gap: 0; }
   .g-panes.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 6px; }
+  /* Grid and Free place each pane by hand (shares of the area); lines and handles resize them. */
+  .g-panes.grid, .g-panes.free { display: block; position: relative; isolation: isolate; }
+  .g-panes.grid .gpane, .g-panes.free .gpane { position: absolute; }
+  .g-panes.free .gp-head { cursor: move; }
+  .g-panes.free .gpane.moving { box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .g-line { position: absolute; z-index: 50; }
+  .g-line::after { content: ""; position: absolute; border-radius: 2px; }
+  .g-line.v { width: 12px; margin-left: -6px; cursor: col-resize; }
+  .g-line.v::after { inset: 0 5px; }
+  .g-line.h { height: 12px; margin-top: -6px; cursor: row-resize; }
+  .g-line.h::after { inset: 5px 0; }
+  .g-line:hover::after, .g-line.on::after { background: var(--accent); }
+  .gp-rs { position: absolute; z-index: 6; }
+  .gp-rs.n, .gp-rs.s { left: 12px; right: 12px; height: 6px; cursor: ns-resize; }
+  .gp-rs.e, .gp-rs.w { top: 12px; bottom: 12px; width: 6px; cursor: ew-resize; }
+  .gp-rs.n { top: 0; } .gp-rs.s { bottom: 0; } .gp-rs.e { right: 0; } .gp-rs.w { left: 0; }
+  .gp-rs.ne, .gp-rs.nw, .gp-rs.se, .gp-rs.sw { width: 14px; height: 14px; }
+  .gp-rs.ne { top: 0; right: 0; cursor: nesw-resize; } .gp-rs.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+  .gp-rs.nw { top: 0; left: 0; cursor: nwse-resize; } .gp-rs.se { bottom: 0; right: 0; cursor: nwse-resize; }
+  .gp-rs.se::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); opacity: .6; }
   .g-gut { background: transparent; position: relative; z-index: 2; }
   .g-gut::after { content: ""; position: absolute; inset: 0 2px; border-radius: 2px; }
   .g-gut:hover::after, .g-gut.on::after { background: var(--accent); }
@@ -1520,7 +1540,8 @@ function renderArchived() {
 
 let cmFor = null; // { sid, tid, armed }
 function openCmenu(x, y, sid, tid) {
-  const s = sid ? anySession(sid) : (S.live.find((v) => v.appId === tid) || null);
+  // The same session can run in two terminals, so a terminal's own entry looks up its own row.
+  const s = (tid && S.live.find((v) => v.appId === tid)) || (sid ? anySession(sid) : null);
   const t = tid ? S.terminals.list.find((v) => v.id === tid) : (s && s.appId ? S.terminals.list.find((v) => v.id === s.appId) : null);
   if (!s && !t) return;
   cmFor = { sid: s ? s.sessionId : null, tid: t ? t.id : null, armed: cmFor && cmFor.armed && cmFor.sid === (s && s.sessionId) ? cmFor.armed : null, x, y };
@@ -1543,7 +1564,7 @@ function renderCmenu(sub) {
       '<button data-act="proj-new" data-for="1">New project…</button>';
   } else {
     const busy = s && s.status === 'busy';
-    h = `<div class="hint">${esc(s ? label(s) : 'New session')}</div>`;
+    h = `<div class="hint">${esc(s ? label(s) : 'New session')}${t && t.exited ? ' (ended)' : ''}</div>`;
     if (inApp) h += item('open', 'Open');
     else if (open) h += item('focus', `Go to its ${WT} tab`);
     else if (s) h += item('resume', 'Reopen');
@@ -1557,6 +1578,14 @@ function renderCmenu(sub) {
       h += (inApp ? '' : '<hr>') + (cmFor.armed === 'end'
         ? item('end', '<b>Click again to end it</b>', ' class="danger"')
         : item('end', 'End session', ' class="danger"'));
+    }
+    // Entries under In this app: take them off that list (a running one is ended first).
+    if (t) {
+      h += t.exited ? '<hr>' + item('remove', 'Remove from this list', ' title="Its session, if it had one, stays under Recently closed"')
+        : cmFor.armed === 'remove' ? item('remove', '<b>Click again: end and remove</b>', ' class="danger"')
+          : item('remove', 'End and remove from this list', ' class="danger" title="Its session stays under Recently closed, so it can be reopened"');
+      const ended = S.terminals.list.filter((v) => v.exited).length;
+      if (ended > 1) h += item('remove-ended', `Remove all ${ended} ended`);
     }
     if (s) {
       h += '<hr>' + item('hide', s.hidden ? 'Unhide' : 'Hide', s.hidden ? '' : ` title="Takes it off the sidebar and lists${open ? '; it keeps running' : ''}. Find it under Archived and hidden."`);
@@ -1579,7 +1608,7 @@ document.addEventListener('contextmenu', (e) => {
   const sid = el.dataset.sid || (el.closest('[data-sid]') || {}).dataset?.sid || null;
   e.preventDefault();
   cmFor = null;
-  openCmenu(e.clientX, e.clientY, sid, sid ? null : el.dataset.tid);
+  openCmenu(e.clientX, e.clientY, sid, el.dataset.tid || null);
 });
 
 async function cmenuAction(op) {
@@ -1587,7 +1616,8 @@ async function cmenuAction(op) {
   const s = sid ? anySession(sid) : null;
   const open = !!(s && S.live.includes(s)) || !!(tid && S.terminals.list.some((v) => v.id === tid && !v.exited));
   // Ending something asks once more in the menu itself.
-  if ((op === 'end' || (op === 'archive' && open)) && cmFor.armed !== op) { cmFor.armed = op; renderCmenu(); return; }
+  const runs = !!(tid && S.terminals.list.some((v) => v.id === tid && !v.exited));
+  if ((op === 'end' || (op === 'archive' && open) || (op === 'remove' && runs)) && cmFor.armed !== op) { cmFor.armed = op; renderCmenu(); return; }
   closePmenu();
   switch (op) {
     case 'open': show(tid); break;
@@ -1605,6 +1635,18 @@ async function cmenuAction(op) {
     case 'hide': act('/api/session/mark', { sessionId: sid, hidden: !s.hidden }, s.hidden ? 'Back in the lists' : 'Hidden; it is under Archived and hidden'); break;
     case 'archive': act('/api/session/mark', { sessionId: sid, archived: true }, open ? 'Ended and archived' : 'Archived'); break;
     case 'unarchive': act('/api/session/mark', { sessionId: sid, archived: false }, 'Back in the lists'); break;
+    case 'remove':
+      if (current === tid) go('overview');
+      act('/api/term/remove', { id: tid }, runs ? 'Ending and removing…' : 'Removed');
+      break;
+    case 'remove-ended': {
+      const ids = S.terminals.list.filter((v) => v.exited).map((v) => v.id);
+      if (ids.includes(current)) go('overview');
+      for (const id of ids) await api('/api/term/remove', { id }).catch(() => {});
+      toast(`Removed ${ids.length} ended`);
+      refresh();
+      break;
+    }
   }
 }
 
@@ -1993,7 +2035,9 @@ function renderGroup() {
   $('#gBar').html = `<span class="ico" style="color:${esc(groupColor(g))}">▦</span><span class="tt">${esc(g.name)}</span>` +
     (p ? `<span class="pchip" style="cursor:default"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</span>` : '') +
     '<span class="spacer"></span>' +
-    (narrow ? '' : `<span class="seg">${lay('cols', '▥ Side by side', 'Next to each other')}${lay('rows', '▤ Stacked', 'One above the other')}${lay('grid', '▦ Grid', 'Two columns')}</span>`) +
+    (narrow ? '' : `<span class="seg">${lay('cols', '▥ Side by side', 'Next to each other')}${lay('rows', '▤ Stacked', 'One above the other')}${lay('grid', '▦ Grid', 'Rows and columns, up to 3 by 3; drag the lines between them')}${lay('free', '✥ Free', 'Drag a pane by its title anywhere, resize it from any edge or corner')}</span>`) +
+    (narrow || g.layout !== 'grid' ? '' : `<span class="seg">${[2, 3, 4].filter((n) => n <= Math.max(2, g.members.length)).map((n) => `<button type="button" data-act="g-across" data-v="${n}" class="${gridOf(g).across === n ? 'on' : ''}" title="${n} panes across">${n} across</button>`).join('')}</span>`) +
+    (narrow || g.layout !== 'free' ? '' : '<button class="btn small ghost" data-act="g-tidy" title="Put every pane back in a neat grid">Tidy</button>') +
     `<button class="btn small" data-act="g-log" title="Show or hide the messages the sessions sent each other">Messages${g.messages.length ? ` (${g.messages.length})` : ''}</button>` +
     `<button class="btn small" data-act="group-edit">Edit group</button>`;
   const pause = $('#gPause');
@@ -2002,7 +2046,7 @@ function renderGroup() {
   renderGroupLog(g);
 
   const panes = $('#gPanes');
-  const key = [g.id, narrow ? 'list' : g.layout, ...g.members.map((m) => m.tid + (S.terminals.list.some((t) => t.id === m.tid) ? '' : '-'))].join('|');
+  const key = [g.id, narrow ? 'list' : g.layout, gridOf(g).across, ...g.members.map((m) => m.tid + (S.terminals.list.some((t) => t.id === m.tid) ? '' : '-'))].join('|');
   if (key !== gKey) {
     gKey = key;
     panes.className = 'g-panes ' + (narrow ? 'list g-list' : g.layout);
@@ -2013,12 +2057,16 @@ function renderGroup() {
       // Phones get a list: one terminal at a time fits a phone better than four tiny ones.
       for (const m of g.members) panes.insertAdjacentHTML('beforeend', `<div class="card" data-tid="${esc(m.tid)}"></div>`);
     } else {
+      const placed = g.layout === 'grid' || g.layout === 'free';
       g.members.forEach((m, i) => {
-        if (i && g.layout !== 'grid') panes.insertAdjacentHTML('beforeend', `<div class="g-gut" data-i="${i - 1}"></div>`);
+        if (i && !placed) panes.insertAdjacentHTML('beforeend', `<div class="g-gut" data-i="${i - 1}"></div>`);
         const pane = document.createElement('div');
         pane.className = 'gpane';
         pane.dataset.tid = m.tid;
-        pane.innerHTML = '<div class="gp-head" draggable="true"></div><div class="gp-body"></div>';
+        pane.dataset.i = i;
+        // Free: the title bar moves the pane (no swapping), and every edge and corner resizes it.
+        pane.innerHTML = `<div class="gp-head" draggable="${g.layout !== 'free'}"></div><div class="gp-body"></div>` +
+          (g.layout === 'free' ? ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => `<div class="gp-rs ${d}" data-dir="${d}"></div>`).join('') : '');
         panes.appendChild(pane);
         if (S.terminals.list.some((t) => t.id === m.tid)) {
           const t = getTerm(m.tid);
@@ -2026,6 +2074,11 @@ function renderGroup() {
           pane.querySelector('.gp-body').appendChild(t.el);
         }
       });
+      if (g.layout === 'grid') {
+        const { across, rows } = gridOf(g);
+        for (let k = 1; k < across; k++) panes.insertAdjacentHTML('beforeend', `<div class="g-line v" data-k="${k}"></div>`);
+        for (let k = 1; k < rows.length; k++) panes.insertAdjacentHTML('beforeend', `<div class="g-line h" data-k="${k}"></div>`);
+      }
     }
   }
   if (!narrow) applySizes(g);
@@ -2058,9 +2111,61 @@ function renderGroup() {
   requestAnimationFrame(fitCurrent);
 }
 
+// Grid: how many across (2 for up to 4 panes, else 3, or what was picked) and each column's and row's share.
+function gridOf(g) {
+  const n = Math.max(1, g.members.length);
+  const across = Math.min(n, (g.grid && g.grid.across) || (n <= 1 ? 1 : n <= 4 ? 2 : 3));
+  const rowsN = Math.ceil(n / across);
+  const share = (list, len) => {
+    const v = list && list.length === len ? list : Array(len).fill(1 / len);
+    const sum = v.reduce((a, b) => a + b, 0);
+    return v.map((x) => x / sum);
+  };
+  return { across, cols: share(g.grid && g.grid.cols, across), rows: share(g.grid && g.grid.rows, rowsN) };
+}
+
+const sumTo = (list, k) => list.slice(0, k).reduce((a, b) => a + b, 0);
+
+// Where pane i sits in the grid; the last pane fills the rest of a short last row.
+function gridBox(gr, i, n) {
+  const c = i % gr.across;
+  const r = Math.floor(i / gr.across);
+  const x = sumTo(gr.cols, c);
+  const w = i === n - 1 ? 1 - x : gr.cols[c];
+  return { x, y: sumTo(gr.rows, r), w, h: gr.rows[r] };
+}
+
+function freeBoxes(g) {
+  if (g.boxes && g.boxes.length === g.members.length) return g.boxes;
+  const gr = gridOf(g);
+  return g.members.map((m, i) => gridBox(gr, i, g.members.length));
+}
+
+// Shares of the area become CSS: 6px of padding round the area, 3px either side of each pane.
+function placeBox(el, b) {
+  const at = (v) => `calc(6px + ${v} * (100% - 12px))`;
+  el.style.left = `calc(${at(b.x)} + 3px)`;
+  el.style.top = `calc(${at(b.y)} + 3px)`;
+  el.style.width = `calc(${b.w} * (100% - 12px) - 6px)`;
+  el.style.height = `calc(${b.h} * (100% - 12px) - 6px)`;
+}
+
+let gZTop = 1;
 function applySizes(g) {
   const panes = $('#gPanes');
-  if (g.layout === 'grid') { panes.style.gridTemplateColumns = panes.style.gridTemplateRows = ''; return; }
+  if (g.layout === 'grid' || g.layout === 'free') {
+    panes.style.gridTemplateColumns = panes.style.gridTemplateRows = '';
+    const gr = gridOf(g);
+    const boxes = g.layout === 'free' ? freeBoxes(g) : g.members.map((m, i) => gridBox(gr, i, g.members.length));
+    for (const el of panes.querySelectorAll('.gpane')) placeBox(el, boxes[Number(el.dataset.i)] || { x: 0, y: 0, w: 1, h: 1 });
+    for (const ln of panes.querySelectorAll('.g-line')) {
+      const k = Number(ln.dataset.k);
+      const at = (v) => `calc(6px + ${v} * (100% - 12px))`;
+      if (ln.classList.contains('v')) Object.assign(ln.style, { left: at(sumTo(gr.cols, k)), top: '6px', bottom: '6px' });
+      else Object.assign(ln.style, { top: at(sumTo(gr.rows, k)), left: '6px', right: '6px' });
+    }
+    return;
+  }
   const sizes = g.sizes && g.sizes.length === g.members.length ? g.sizes : g.members.map(() => 1);
   const tpl = sizes.map((n) => `minmax(0, ${n}fr)`).join(' 6px ');
   panes.style.gridTemplateColumns = g.layout === 'cols' ? tpl : '';
@@ -2146,6 +2251,98 @@ $('#gPanes').addEventListener('pointerdown', (e) => {
   gut.addEventListener('pointermove', move);
   gut.addEventListener('pointerup', up);
 });
+// Pointer drags in Grid (the lines between columns and rows) and Free (move by the title, resize by an edge).
+// The drag shows at once; the server keeps the result when the pointer lets go.
+function gDragOn(el, e, move, done) {
+  e.preventDefault();
+  el.setPointerCapture(e.pointerId);
+  const up = () => {
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', up);
+    done();
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+}
+
+$('#gPanes').addEventListener('pointerdown', (e) => {
+  const g = groupById(curGroup);
+  if (!g || e.button !== 0) return;
+  const panes = $('#gPanes');
+  const W = panes.clientWidth - 12;
+  const H = panes.clientHeight - 12;
+  const save = (body) => api('/api/groups/layout', { id: g.id, ...body }).catch((er) => toast(er.message, true));
+
+  const line = e.target.closest('.g-line');
+  if (line && g.layout === 'grid') {
+    const gr = gridOf(g);
+    const v = line.classList.contains('v');
+    const list = v ? gr.cols : gr.rows;
+    const k = Number(line.dataset.k);
+    const pair = list[k - 1] + list[k];
+    const a0 = list[k - 1];
+    const start = v ? e.clientX : e.clientY;
+    line.classList.add('on');
+    gDragOn(line, e, (ev) => {
+      const d = ((v ? ev.clientX : ev.clientY) - start) / (v ? W : H);
+      list[k - 1] = Math.min(pair - 0.08, Math.max(0.08, a0 + d));
+      list[k] = pair - list[k - 1];
+      g.grid = { across: gr.across, cols: gr.cols, rows: gr.rows };
+      applySizes(g);
+    }, () => { line.classList.remove('on'); save({ grid: g.grid }); });
+    return;
+  }
+
+  const pane = g.layout === 'free' && e.target.closest('.gpane');
+  if (!pane) return;
+  pane.style.zIndex = ++gZTop; // the pane you touch comes to the front
+  const rs = e.target.closest('.gp-rs');
+  const head = e.target.closest('.gp-head');
+  if (!rs && (!head || e.target.closest('button'))) return;
+  const i = Number(pane.dataset.i);
+  const boxes = freeBoxes(g).map((b) => ({ ...b }));
+  const b0 = { ...boxes[i] };
+  const sx = e.clientX;
+  const sy = e.clientY;
+  const dir = rs ? rs.dataset.dir : 'move';
+  // Snap to a fine grid (1/48 of the area) and to the edges of the other panes and the area.
+  const edges = (axis) => [0, 1, ...boxes.filter((b, j) => j !== i).flatMap((b) => (axis === 'x' ? [b.x, b.x + b.w] : [b.y, b.y + b.h]))];
+  const ex = edges('x');
+  const ey = edges('y');
+  const snap = (v, list) => {
+    const near = list.find((p) => Math.abs(p - v) < 0.012);
+    return near !== undefined ? near : Math.round(v * 48) / 48;
+  };
+  const MIN = 0.08;
+  pane.classList.add('moving');
+  gDragOn(rs || head, e, (ev) => {
+    const dx = (ev.clientX - sx) / W;
+    const dy = (ev.clientY - sy) / H;
+    const b = { ...b0 };
+    if (dir === 'move') {
+      // Snap whichever side lands nearer an edge.
+      let x = Math.min(1 - b.w, Math.max(0, b0.x + dx));
+      let y = Math.min(1 - b.h, Math.max(0, b0.y + dy));
+      const sxl = snap(x, ex); const sxr = snap(x + b.w, ex) - b.w;
+      x = Math.abs(sxl - x) <= Math.abs(sxr - x) ? sxl : sxr;
+      const syt = snap(y, ey); const syb = snap(y + b.h, ey) - b.h;
+      y = Math.abs(syt - y) <= Math.abs(syb - y) ? syt : syb;
+      b.x = Math.min(1 - b.w, Math.max(0, x));
+      b.y = Math.min(1 - b.h, Math.max(0, y));
+    } else {
+      if (dir.includes('e')) b.w = Math.min(1 - b0.x, Math.max(MIN, snap(b0.x + b0.w + dx, ex) - b0.x));
+      if (dir.includes('s')) b.h = Math.min(1 - b0.y, Math.max(MIN, snap(b0.y + b0.h + dy, ey) - b0.y));
+      if (dir.includes('w')) { const x = Math.max(0, Math.min(b0.x + b0.w - MIN, snap(b0.x + dx, ex))); b.w = b0.x + b0.w - x; b.x = x; }
+      if (dir.includes('n')) { const y = Math.max(0, Math.min(b0.y + b0.h - MIN, snap(b0.y + dy, ey))); b.h = b0.y + b0.h - y; b.y = y; }
+    }
+    boxes[i] = b;
+    g.boxes = boxes;
+    placeBox(pane, b);
+  }, () => { pane.classList.remove('moving'); save({ boxes: g.boxes }); });
+});
+
 $('#gMsgs').addEventListener('click', (e) => { const m = e.target.closest('.g-msg'); if (m) m.classList.toggle('open'); });
 NARROW.addEventListener('change', () => { gKey = null; if (view === 'group') renderGroup(); });
 
@@ -2201,7 +2398,7 @@ function renderGroupEditor() {
       <select class="search" data-f="src">${r.src ? '' : '<option value="" selected>Pick a folder or a session</option>'}${opts}</select>
       <button type="button" class="btn ghost small" data-act="grow-del" data-i="${i}" title="Take out of the group (the session keeps running)" ${editGroup.rows.length > 1 ? '' : 'disabled'}>✕</button></div>`;
   }).join('');
-  $('#gAddRow').disabled = editGroup.rows.length >= 6;
+  $('#gAddRow').disabled = editGroup.rows.length >= 9;
 }
 
 function readGroupEditor() {
@@ -2687,6 +2884,24 @@ document.addEventListener('click', async (e) => {
       g.layout = b.dataset.v;
       renderGroup();
       api('/api/groups/layout', { id: g.id, layout: g.layout }).catch((er) => toast(er.message, true));
+      break;
+    }
+    case 'g-across': {
+      const g = groupById(curGroup);
+      if (!g) break;
+      const across = Number(b.dataset.v);
+      const rows = Math.ceil(g.members.length / across);
+      g.grid = { across, cols: Array(across).fill(1 / across), rows: Array(rows).fill(1 / rows) };
+      renderGroup();
+      api('/api/groups/layout', { id: g.id, grid: g.grid }).catch((er) => toast(er.message, true));
+      break;
+    }
+    case 'g-tidy': {
+      const g = groupById(curGroup);
+      if (!g) break;
+      g.boxes = null;
+      applySizes(g);
+      api('/api/groups/layout', { id: g.id, boxes: null }).catch((er) => toast(er.message, true));
       break;
     }
     case 'g-log': { const l = $('#gLog'); l.hidden = !l.hidden; l.dataset.user = '1'; break; }

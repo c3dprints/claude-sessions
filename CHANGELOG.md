@@ -2,6 +2,16 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.11 (2026-11-01)
+
+Clean up In this app, and lay out groups freely.
+
+- **Remove from In this app**: right-click an entry under In this app. An ended one (like a blank New session) has **Remove from this list**; a running one has **End and remove from this list** (asks once more), which ends it and takes it off at once. **Remove all ended** clears every ended entry in one go. A session Claude had started stays under Recently closed, so it can still be reopened.
+- Right-clicking one of two terminals that run the same session now acts on the one you clicked.
+- **Groups hold up to 9 sessions.**
+- **Grid** is a real grid now: up to 3 by 3 (pick 2, 3 or 4 across). Drag any line between columns or rows to resize them; a short last row is filled by its last pane.
+- **Free** layout: drag a pane by its title bar anywhere, and resize it from any edge or corner. Panes snap to each other and to the edges, the pane you touch comes to the front, and **Tidy** puts them back in a neat grid. Both layouts are kept.
+
 ## 1.5.10 (2026-10-31)
 
 Right-click a session.

@@ -105,8 +105,11 @@ function appTerminals() {
 
 function snapshot() {
   const nick = store.state.nicknames;
-  const terms = appTerminals().map((t) => ({ ...t, paused: pausedTerms.has(t.id) }));
+  const allTerms = appTerminals();
+  const terms = allTerms.filter((t) => !removing.has(t.id)).map((t) => ({ ...t, paused: pausedTerms.has(t.id) }));
   const appByPid = new Map(terms.filter((t) => t.pid && !t.exited).map((t) => [t.pid, t.id]));
+  // A terminal being removed is still ending: keep its session out of the lists until it is gone.
+  const ending = new Set(allTerms.filter((t) => removing.has(t.id) && t.pid).map((t) => t.pid));
   const liveIds = new Set(live.map((s) => s.sessionId));
   const closed = store.state.closed.filter((c) => !liveIds.has(c.sessionId));
   const closedIds = new Set(closed.map((c) => c.sessionId));
@@ -118,7 +121,7 @@ function snapshot() {
   return {
     app: { name: 'Claude Sessions', version: pkg.version, platform: process.platform },
     now: Date.now(),
-    live: live.map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) })),
+    live: live.filter((s) => !ending.has(s.pid)).map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) })),
     closed: closed.map(withNick),
     history: history.map(withNick),
     folders: recentFolders([...live, ...closed, ...history]).slice(0, 12),
@@ -289,6 +292,13 @@ async function startTerminal(cwd, resumeId, b) {
 const bracketed = new Map(); // terminal id -> its program turned on bracketed paste
 const lastDelivery = new Map(); // terminal id -> when a message was last typed into it
 const pausedTerms = new Set(); // terminals stopped with Pause; team messages wait until Continue or the user types
+const removing = new Set(); // terminals taken off the list that are still ending
+
+async function forgetTerm(id) {
+  removing.delete(id);
+  await host.request({ t: 'forget', id }).catch(() => {});
+  host.sessions.delete(id);
+}
 let teamSecret = null;
 
 function secretKey() { return teamSecret || (teamSecret = teams.secret(DATA_DIR)); }
@@ -337,7 +347,7 @@ function groupsView(terms) {
   const connected = connectedTids();
   const nick = store.state.nicknames;
   return store.state.groups.map((g) => ({
-    id: g.id, name: g.name, projectId: g.projectId, layout: g.layout, sizes: g.sizes, paused: !!g.paused, run: g.run || 0,
+    id: g.id, name: g.name, projectId: g.projectId, layout: g.layout, sizes: g.sizes, grid: g.grid || null, boxes: g.boxes || null, paused: !!g.paused, run: g.run || 0,
     members: g.members.map((m) => {
       const t = terms.find((x) => x.id === m.tid);
       const s = liveOfTerm(t);
@@ -448,7 +458,7 @@ function checkGroupBody(b) {
   const projectId = b.projectId || null;
   if (projectId && !store.state.projects.some((p) => p.id === projectId)) throw fail(404, 'no such project');
   const layout = teams.LAYOUTS.includes(b.layout) ? b.layout : 'cols';
-  if (!Array.isArray(b.members) || b.members.length > 6) throw fail(400, 'a group holds up to 6 sessions');
+  if (!Array.isArray(b.members) || b.members.length > teams.MAX_MEMBERS) throw fail(400, `a group holds up to ${teams.MAX_MEMBERS} sessions`);
   const roles = new Set();
   const members = b.members.map((m) => {
     const role = teams.checkName(m.role, 'role', 30);
@@ -504,6 +514,7 @@ function replayAll(client) {
 
 host.on('event', (msg) => {
   trackPasteMode(msg);
+  if (msg.t === 'exit' && msg.session && removing.has(msg.session.id)) forgetTerm(msg.session.id);
   for (const c of streams) {
     if (msg.t === 'out' && c.pending.has(msg.id)) continue;
     sse(c.res, msg);
@@ -774,7 +785,7 @@ const routes = {
       g = { id: crypto.randomUUID(), paused: false, run: 0 };
       store.state.groups.push(g);
     }
-    if (!g.members || g.members.length !== members.length) g.sizes = members.map(() => 1);
+    if (!g.members || g.members.length !== members.length) Object.assign(g, { sizes: members.map(() => 1), grid: null, boxes: null });
     Object.assign(g, { name: p.name, projectId: p.projectId, layout: p.layout, members });
     store.save();
     log(`group ${g.name} saved with ${members.length} sessions`);
@@ -794,16 +805,34 @@ const routes = {
     const g = store.state.groups.find((x) => x.id === b.id);
     if (!g) throw fail(404, 'no such group');
     if (b.layout !== undefined) {
-      if (!teams.LAYOUTS.includes(b.layout)) throw fail(400, 'layout must be cols, rows or grid');
+      if (!teams.LAYOUTS.includes(b.layout)) throw fail(400, 'layout must be cols, rows, grid or free');
       g.layout = b.layout;
     }
     if (Array.isArray(b.order)) {
       if (b.order.length !== g.members.length || !g.members.every((m) => b.order.includes(m.tid))) throw fail(400, 'order must list every session of the group');
+      const was = g.members.map((m) => m.tid);
       g.members.sort((x, y) => b.order.indexOf(x.tid) - b.order.indexOf(y.tid));
+      if (g.boxes && g.boxes.length === was.length) g.boxes = g.members.map((m) => g.boxes[was.indexOf(m.tid)]);
     }
     if (Array.isArray(b.sizes)) {
       if (b.sizes.length !== g.members.length || !b.sizes.every((n) => typeof n === 'number' && n >= 0.1 && n <= 10)) throw fail(400, 'bad sizes');
       g.sizes = b.sizes.map((n) => Math.round(n * 1000) / 1000);
+    }
+    const frac = (n, lo = 0, hi = 1) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
+    const round = (n) => Math.round(n * 10000) / 10000;
+    // Grid: how many across, and the share of each column and row.
+    if (b.grid !== undefined) {
+      const gr = b.grid;
+      if (gr !== null && (!gr || typeof gr !== 'object' || !Number.isInteger(gr.across) || gr.across < 1 || gr.across > 4
+        || !Array.isArray(gr.cols) || !Array.isArray(gr.rows) || gr.cols.length > 4 || gr.rows.length > 9
+        || ![...gr.cols, ...gr.rows].every((n) => frac(n, 0.02, 1)))) throw fail(400, 'bad grid');
+      g.grid = gr && { across: gr.across, cols: gr.cols.map(round), rows: gr.rows.map(round) };
+    }
+    // Free: where each pane sits, as shares of the area: { x, y, w, h } in the order of the members.
+    if (b.boxes !== undefined) {
+      if (b.boxes !== null && (!Array.isArray(b.boxes) || b.boxes.length !== g.members.length
+        || !b.boxes.every((x) => x && frac(x.x) && frac(x.y) && frac(x.w, 0.05) && frac(x.h, 0.05)))) throw fail(400, 'bad pane boxes');
+      g.boxes = b.boxes && b.boxes.map((x) => ({ x: round(x.x), y: round(x.y), w: round(x.w), h: round(x.h) }));
     }
     store.save();
     return { ok: true };
@@ -889,6 +918,22 @@ const routes = {
     const t = termOf(b.id);
     await host.request({ t: 'forget', id: t.id });
     host.sessions.delete(t.id);
+    return { ok: true };
+  },
+
+  // Takes a terminal off the In this app list, ending it first if it still runs.
+  // Its session (if Claude started one) stays under Recently closed, so it can be reopened.
+  // A running one leaves the list at once and is forgotten when it has exited (host 'exit' event).
+  'POST /api/term/remove': async (b) => {
+    const t = termOf(b.id);
+    if (removing.has(t.id)) throw fail(404, 'no such terminal');
+    pausedTerms.delete(t.id);
+    if (t.exited) await forgetTerm(t.id);
+    else {
+      removing.add(t.id);
+      await host.request({ t: 'kill', id: t.id });
+    }
+    log(`terminal ${t.id} removed from the list`);
     return { ok: true };
   },
 
