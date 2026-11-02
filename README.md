@@ -23,7 +23,14 @@ If you would rather not run an exe, install [Node.js 18+](https://nodejs.org) an
 irm https://raw.githubusercontent.com/c3dprints/claude-sessions/main/scripts/install.ps1 | iex
 ```
 
-### Mac
+### Mac: download and double-click
+
+1. Download **[ClaudeSessionsSetup-mac.zip](https://github.com/c3dprints/claude-sessions/releases/latest/download/ClaudeSessionsSetup-mac.zip)** and open it. You get **Install Claude Sessions.command**.
+2. Double-click it. It is not signed by Apple, so macOS will say it cannot verify it: click **Done**, open **System Settings**, **Privacy & Security**, scroll down and click **Open Anyway** next to the message about it, then confirm. (Or in Terminal run `bash ~/Downloads/"Install Claude Sessions.command"`.)
+3. It opens in Terminal. If the Xcode command line tools are missing it starts their installer; if Node.js is missing it installs it with Homebrew, or downloads the official installer from nodejs.org. Press Enter to say yes.
+4. It builds **Claude Sessions.app** into the Applications folder in your home folder and opens it.
+
+### Mac: one line in Terminal
 
 Install Node.js 18+ and the Xcode command line tools (`xcode-select --install`), then paste this into Terminal:
 
@@ -103,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 bash scripts/install-mac.sh
 ```
 
-Same idea: clones to `~/Library/Application Support/ClaudeSessions/app`, checks out the newest release tag and builds **Claude Sessions.app** into `~/Applications`. To run another checkout, pass it: `scripts/build-mac.sh <folder>`. Keep that folder out of Documents, Desktop and Downloads: macOS keeps apps started from Finder out of them, and the launcher hangs. Needs Node 18+ and the Xcode command line tools (`xcode-select --install`) for `cc` and `git`.
+`Install Claude Sessions.command` (in ClaudeSessionsSetup-mac.zip) carries this same script and first sets up the Xcode command line tools and Node.js. Same idea: clones to `~/Library/Application Support/ClaudeSessions/app`, checks out the newest release tag and builds **Claude Sessions.app** into `~/Applications`. To run another checkout, pass it: `scripts/build-mac.sh <folder>`. Keep that folder out of Documents, Desktop and Downloads: macOS keeps apps started from Finder out of them, and the launcher hangs. Needs Node 18+ and the Xcode command line tools (`xcode-select --install`) for `cc` and `git`.
 
 On a Mac the Windows parts have stand-ins:
 
@@ -126,7 +133,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 
 1. Make the change, run `npm test`.
 2. Bump `version` in `package.json` and add a matching `## x.y.z` entry at the top of `CHANGELOG.md`.
-3. Commit, then `npm run release`. It checks everything, pushes `main`, and pushes the `vX.Y.Z` tag. Installed copies pick it up on their next check. On Windows with the GitHub CLI (`gh`) signed in, it also builds `ClaudeSessionsSetup.exe` and publishes a GitHub release for the tag with the exe and the changelog entry.
+3. Commit, then `npm run release`. It checks everything, pushes `main`, and pushes the `vX.Y.Z` tag. Installed copies pick it up on their next check. With the GitHub CLI (`gh`) signed in, it also builds the installers and publishes a GitHub release for the tag with them and the changelog entry (the exe only when releasing from Windows).
 
 ## Files
 
@@ -148,6 +155,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `launch.js` + `scripts/launch.vbs` | One-click launcher (no console window) |
 | `scripts/install.ps1`, `scripts/install-mac.sh` | Install or repair |
 | `installer/setup.cs` + `scripts/build-setup.js` | ClaudeSessionsSetup.exe (Windows) |
+| `installer/install-mac.command` + `scripts/build-setup.js` | ClaudeSessionsSetup-mac.zip (macOS; `install-mac.sh` is put inside, the zip keeps it executable) |
 | `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
 | `public/index.html` | The app |
 
