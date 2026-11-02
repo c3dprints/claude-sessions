@@ -5,6 +5,11 @@
 param([string]$Repo = 'https://github.com/c3dprints/claude-sessions.git')
 $ErrorActionPreference = 'Stop'
 
+foreach ($tool in @(@('git', 'Git: https://git-scm.com or winget install Git.Git'),
+                    @('node', 'Node.js 18+: https://nodejs.org or winget install OpenJS.NodeJS.LTS'))) {
+  if (-not (Get-Command $tool[0] -ErrorAction SilentlyContinue)) { throw "$($tool[0]) was not found. Install $($tool[1]), then run this again." }
+}
+
 $root = Join-Path $env:LOCALAPPDATA 'ClaudeSessions'
 $app = Join-Path $root 'app'
 New-Item -ItemType Directory -Force $root | Out-Null

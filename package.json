@@ -1,6 +1,6 @@
 {
   "name": "claude-sessions",
-  "version": "1.5.11",
+  "version": "1.5.12",
   "description": "Local app for every Claude Code session: built-in terminals, live status, one-click reopen.",
   "license": "MIT",
   "main": "server.js",
@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tests/run-all.js",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "build-setup": "node scripts/build-setup.js"
   },
   "engines": {
     "node": ">=18"

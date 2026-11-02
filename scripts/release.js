@@ -32,3 +32,18 @@ execFileSync('git', ['push', '--quiet', 'origin', 'main'], { cwd: ROOT, stdio: '
 run('git', ['tag', '-a', tag, '-m', `Claude Sessions ${version}`]);
 execFileSync('git', ['push', '--quiet', 'origin', tag], { cwd: ROOT, stdio: 'inherit' });
 console.log(`released ${tag}. Installed copies will offer it on their next check (or press Check now).`);
+
+// The GitHub release page carries ClaudeSessionsSetup.exe for new installs.
+// The tag is already out, so a failure here only warns.
+if (process.platform === 'win32') {
+  try {
+    const exe = require('./build-setup').buildSetup();
+    const notes = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8')
+      .split(/^## /m).find((s) => /^[\d.]+/.exec(s)?.[0] === version)
+      .replace(/^.*\r?\n/, '').trim();
+    run('gh', ['release', 'create', tag, exe, '--title', `Claude Sessions ${version}`, '--notes', notes]);
+    console.log(`GitHub release ${tag} published with ClaudeSessionsSetup.exe`);
+  } catch (e) {
+    console.warn(`GitHub release not published (${(e.stderr || e.message).trim()}). Run: npm run build-setup, then gh release create ${tag} dist\\ClaudeSessionsSetup.exe`);
+  }
+}

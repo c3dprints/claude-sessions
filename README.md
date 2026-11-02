@@ -2,6 +2,49 @@
 
 A local app for every Claude Code session on this PC or Mac: run sessions in built-in terminals, see the ones in Windows Terminal (or Terminal on a Mac), and reopen anything that got closed by accident in one click.
 
+## Get started
+
+You need [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) installed and working. The app is free and runs only on your own computer.
+
+### Windows: download and double-click
+
+1. Download **[ClaudeSessionsSetup.exe](https://github.com/c3dprints/claude-sessions/releases/latest/download/ClaudeSessionsSetup.exe)** (from the [latest release](https://github.com/c3dprints/claude-sessions/releases/latest)).
+2. Double-click it. The exe is not code signed, so Windows may show **Windows protected your PC**: click **More info**, then **Run anyway**.
+3. If Node.js or Git is missing, it offers to install them with winget. Press Enter to say yes.
+4. It installs the app, puts a **Claude Sessions** shortcut on your Desktop and opens it.
+
+From then on, start it from the Desktop shortcut. It updates itself, so you only run the setup again to repair the install.
+
+### Windows: one line in PowerShell
+
+If you would rather not run an exe, install [Node.js 18+](https://nodejs.org) and [Git](https://git-scm.com) (or run `winget install OpenJS.NodeJS.LTS` and `winget install Git.Git`), then paste this into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/c3dprints/claude-sessions/main/scripts/install.ps1 | iex
+```
+
+### Mac
+
+Install Node.js 18+ and the Xcode command line tools (`xcode-select --install`), then paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/c3dprints/claude-sessions/main/scripts/install-mac.sh | bash
+```
+
+Open **Claude Sessions** from `~/Applications`.
+
+### Run it from a clone (for development)
+
+```powershell
+git clone https://github.com/c3dprints/claude-sessions.git
+cd claude-sessions
+npm start
+```
+
+Then open http://127.0.0.1:8930. There are no npm dependencies to install. `npm test` runs the checks.
+
+More help, including how to uninstall, is in the [wiki](https://github.com/c3dprints/claude-sessions/wiki).
+
 ## What it does
 
 - **Built-in terminals**: start, reopen or move a session into the app and work with Claude right there. Sessions in the app keep running when the window is closed or the app updates itself.
@@ -46,11 +89,13 @@ Tab jumping for Windows Terminal sessions uses Windows UI Automation (`scripts/f
 
 ## Install
 
+[Get started](#get-started) has the quick ways. What they run underneath, from a clone:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
-This clones the repo to `%LOCALAPPDATA%\ClaudeSessions\app`, checks out the newest release tag, and puts a **Claude Sessions** shortcut on the Desktop. Run it again any time to repair the install.
+`ClaudeSessionsSetup.exe` (`installer/setup.cs`, built with `npm run build-setup` by the `csc.exe` that ships with Windows) carries this same script inside it and first offers to install Node.js and Git with winget. The script clones the repo to `%LOCALAPPDATA%\ClaudeSessions\app`, checks out the newest release tag, and puts a **Claude Sessions** shortcut on the Desktop. Run it again any time to repair the install.
 
 ### macOS
 
@@ -81,7 +126,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 
 1. Make the change, run `npm test`.
 2. Bump `version` in `package.json` and add a matching `## x.y.z` entry at the top of `CHANGELOG.md`.
-3. Commit, then `npm run release`. It checks everything, pushes `main`, and pushes the `vX.Y.Z` tag. Installed copies pick it up on their next check.
+3. Commit, then `npm run release`. It checks everything, pushes `main`, and pushes the `vX.Y.Z` tag. Installed copies pick it up on their next check. On Windows with the GitHub CLI (`gh`) signed in, it also builds `ClaudeSessionsSetup.exe` and publishes a GitHub release for the tag with the exe and the changelog entry.
 
 ## Files
 
@@ -101,6 +146,8 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `lib/startup.js` | Start with Windows shortcut |
 | `lib/remote.js` + `public/pair.html` | Phone access: Tailscale address, pairing codes, paired devices |
 | `launch.js` + `scripts/launch.vbs` | One-click launcher (no console window) |
+| `scripts/install.ps1`, `scripts/install-mac.sh` | Install or repair |
+| `installer/setup.cs` + `scripts/build-setup.js` | ClaudeSessionsSetup.exe (Windows) |
 | `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
 | `public/index.html` | The app |
 

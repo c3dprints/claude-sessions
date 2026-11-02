@@ -2,6 +2,15 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.12 (2026-11-02)
+
+Easier to install.
+
+- **ClaudeSessionsSetup.exe** on the GitHub release page: double-click to install. It offers to install Node.js and Git with winget when they are missing, warns when Claude Code is not found, then installs the app, makes the Desktop shortcut and opens it.
+- The README starts with **Get started**: the exe, a one-line PowerShell install, a one-line Mac install, and running from a clone.
+- The install script says plainly when Git or Node.js is missing.
+- `npm run release` now also publishes a GitHub release with the exe and these notes.
+
 ## 1.5.11 (2026-11-01)
 
 Clean up In this app, and lay out groups freely.
