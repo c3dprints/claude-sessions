@@ -2,6 +2,14 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.13 (2026-11-02)
+
+A Mac installer too.
+
+- **ClaudeSessionsSetup-mac.zip** on the GitHub release page holds **Install Claude Sessions.command**. Double-click it: it starts the Xcode command line tools installer if they are missing, installs Node.js with Homebrew or the official nodejs.org installer if it is missing, warns when Claude Code is not found, then installs the app, builds Claude Sessions.app and opens it.
+- The README and the wiki Install page explain how to open it (it is not signed by Apple, so macOS asks once in Privacy & Security).
+- `npm run release` attaches the Mac zip as well as the Windows exe.
+
 ## 1.5.12 (2026-11-02)
 
 Easier to install.
