@@ -68,6 +68,7 @@ More help, including how to uninstall, is in the [wiki](https://github.com/c3dpr
 - **Phone access** (Settings, off by default): use the app from a phone over Tailscale. Settings shows the Tailscale IP, port and address; a phone pairs once with a 6 digit code. **Set up HTTPS** turns on Tailscale Serve (https://<pc>.<tailnet>.ts.net) so the phone can install it as an app. On small screens the sidebar is a drawer and terminals get an Esc / Tab / arrows / Enter / Ctrl+C key row.
 - **Right-click menu** on any session: open, rename, move to project, pause and continue, end, remove from In this app, hide, archive (Archived and hidden list at the bottom of All sessions).
 - **Groups**: up to 9 sessions side by side, stacked, in a grid (up to 3 by 3, drag the lines) or placed freely (drag and resize each pane); they can message each other.
+- **Trust the folder by itself** (Settings, off by default): answers Claude Code's "do you trust this folder" question with Yes for sessions the app starts.
 - **Rename**, **New session** in a recent or project folder, **self-update**.
 
 ## How it works

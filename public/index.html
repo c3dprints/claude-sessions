@@ -708,6 +708,12 @@
     </section>
 
     <section class="set-sec">
+      <h4>New chats</h4>
+      <label class="switch"><input type="checkbox" id="optTrust"> Trust the folder by itself</label>
+      <p class="note">When Claude Code asks whether you trust the folder of a session the app starts, the app answers "Yes, I trust this folder" for you, so you go straight to the chat. Trusting a folder lets its own Claude settings, hooks and MCP servers run, so leave this off if you open folders you did not make.</p>
+    </section>
+
+    <section class="set-sec">
       <h4>Groups</h4>
       <label class="switch"><input type="checkbox" id="optTeam"> Sessions in a group can message each other</label>
       <p class="note">Sessions you start in the app get two small tools, team_info and send_message. A message is typed into the teammate's session as a prompt once it is idle, never into a question it is asking you. After 20 messages in a row with nobody typing, the group pauses until you let it continue. Turning this off affects sessions started from then on. Groups open side by side on a computer; a phone lists them.</p>
@@ -1748,6 +1754,7 @@ function renderUpdates() {
   $('#optStartup').checked = S.settings.startWithWindows;
   $('#optAuto').checked = S.settings.autoUpdate;
   $('#optTeam').checked = S.settings.teamTalk;
+  $('#optTrust').checked = S.settings.autoTrust;
 }
 
 const SAMPLE = [
@@ -3038,7 +3045,8 @@ $('#setDlg').addEventListener('click', (e) => { if (e.target === $('#setDlg')) $
 $('#sideWtHead').textContent = 'In ' + WT;
 $('#optStartupLabel').textContent = STARTUP;
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? (MAC ? 'Starts at login' : 'Starts with Windows') : (MAC ? 'Will not start at login' : 'Will not start with Windows')));
-$('#optTeam').addEventListener('change', (e) => act('/api/settings', { teamTalk: e.target.checked }, e.target.checked ? 'Sessions started from now on can message their group' : 'New sessions start without the team tools'));
+$('#optTrust').addEventListener('change', (e) => act('/api/settings', { autoTrust: e.target.checked }, e.target.checked ? 'New chats trust their folder by themselves' : 'New chats ask about the folder again'));
+$('#optTeam').addEventListener('change',(e) => act('/api/settings', { teamTalk: e.target.checked }, e.target.checked ? 'Sessions started from now on can message their group' : 'New sessions start without the team tools'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
 function route() {

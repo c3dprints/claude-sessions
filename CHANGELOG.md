@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.15 (2026-11-03)
+
+- **Trust the folder by itself** (Settings, **New chats**, off by default): when Claude Code asks whether you trust the folder of a session the app starts, the app picks **Yes, I trust this folder** for you, so a new chat goes straight to the prompt. Claude Code 2.x lists **No, exit** first with the pointer on it, so the app reads the screen and moves the pointer to Yes before pressing Enter; it never presses Enter anywhere else. It stops watching after a minute.
+
 ## 1.5.14 (2026-11-03)
 
 Images in prompts, and new chats that join their project.

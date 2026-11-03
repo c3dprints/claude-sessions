@@ -19,6 +19,7 @@ const library = require('../lib/library');
 const usage = require('../lib/usage');
 const { HostClient } = require('../lib/hostclient');
 const teams = require('../lib/teams');
+const trustprompt = require('../lib/trustprompt');
 
 const WIN = process.platform === 'win32';
 // Harmless stand-ins for claude that print a marker, then wait for typing.
@@ -185,6 +186,30 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     } finally {
       child.kill();
     }
+  });
+
+  await check('trust question: the pointer is moved to Yes, then Enter', () => {
+    const C = '\x1b[1C';
+    // Laid out like Claude Code 2.1 under ConPTY: spaces as cursor moves, a link ended by ESC \.
+    const question = `\x1b[?2026h\x1b[2;1HAccessing${C}workspace:\x1b[4;2HQuick${C}safety${C}check:`
+      + `\x1b]8;id=x;https://example.com/security\x1b\\\x1b[12;2HSecurity guide\x1b]8;;\x1b\\`
+      + `\x1b[14;2H❯${C}No,${C}exit\x1b[15;4HYes,${C}I${C}trust${C}this${C}folder`;
+    const s = new trustprompt.Screen();
+    s.feed(question);
+    assert.strictEqual(trustprompt.keyFor(s), null, 'not until it is fully drawn');
+    s.feed(`\x1b[17;2HEnter${C}to${C}confirm${C}·${C}Esc${C}to${C}cancel`);
+    assert.strictEqual(trustprompt.keyFor(s), '\x1b[B');
+    s.feed('\x1b[?2026h\x1b[?2026l\x1b[14;2H \x1b[15;2H❯');
+    assert.strictEqual(trustprompt.keyFor(s), '\r');
+    s.feed('\x1b[2J\x1b[1;1H❯ Try something');
+    assert.strictEqual(trustprompt.keyFor(s), null, 'gone once the screen is cleared');
+    // Yes first with the pointer on it (older order): Enter right away.
+    const t = new trustprompt.Screen();
+    t.feed('\x1b[5;2H❯ 1. Yes, I trust this folder\x1b[6;4H2. No, exit\x1b[8;2HEnter to confirm');
+    assert.strictEqual(trustprompt.keyFor(t), '\r');
+    // Pointer below Yes: Up.
+    t.feed('\x1b[5;2H \x1b[6;2H❯');
+    assert.strictEqual(trustprompt.keyFor(t), '\x1b[A');
   });
 
   await check('tasklist parsing keeps only claude.exe', () => {
@@ -868,6 +893,70 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       const idle = await request(PORT, 'POST', '/api/move', { body: { sessionId: ID3, cols: 80, rows: 24 }, headers: H });
       assert.strictEqual(idle.status, 200, JSON.stringify(idle.json));
       assert.ok(idle.json.id);
+    });
+
+    await check('http: with autoTrust on, the folder trust question is answered Yes', async () => {
+      let streamed = '';
+      const sreq = http.get({ host: '127.0.0.1', port: PORT, path: '/api/term/stream', headers: { Host: `127.0.0.1:${PORT}` } }, (res) => {
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (d) => {
+          buf += d;
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            const block = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (!block.startsWith('data: ')) continue;
+            const m = JSON.parse(block.slice(6));
+            if (m.t === 'out' && m.data) streamed += Buffer.from(m.data, 'base64').toString('utf8');
+          }
+        });
+      });
+      const ids = [];
+      // A stand-in for the question, drawn the way Claude Code 2.x draws it: "No, exit" first with
+      // the pointer on it. Down / Up move the pointer, Enter prints which answer was picked.
+      const asker = path.join(fx.work, 'trust-ask.js');
+      fs.writeFileSync(asker, `const W = (s) => process.stdout.write(s);
+let at = 0;
+const draw = () => W('\\x1b[14;2H' + (at ? ' ' : '\\u276f') + '\\x1b[15;2H' + (at ? '\\u276f' : ' '));
+W('\\x1b[2J\\x1b[8;2HQuick safety check\\x1b[14;4HNo, exit\\x1b[15;4HYes, I trust this folder\\x1b[17;2HEnter to confirm');
+draw();
+process.stdin.setRawMode(true);
+process.stdin.on('data', (d) => {
+  const s = d.toString();
+  if (s.includes('\\r')) { W('\\x1b[2J\\x1b[1;1HCHOSE-' + (at ? 'YES' : 'NO') + '\\r\\n'); process.exit(0); }
+  if (s.includes('\\x1b[B')) at = 1;
+  if (s.includes('\\x1b[A')) at = 0;
+  draw();
+});
+`);
+      const ask = `node "${asker}"\r`;
+      const start = async (on) => {
+        assert.strictEqual((await request(PORT, 'POST', '/api/settings', { body: { autoTrust: on }, headers: H })).status, 200);
+        const r = await request(PORT, 'POST', '/api/new', { body: { cwd: fx.work, cols: 100, rows: 30 }, headers: H });
+        assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+        ids.push(r.json.id);
+        await until(() => strip(streamed).includes('APP-READY'), 15000);
+        await request(PORT, 'POST', '/api/term/input', { body: { id: r.json.id, data: ask }, headers: H });
+      };
+      try {
+        await start(false);
+        await sleep(3000);
+        assert.ok(!/CHOSE-/.test(strip(streamed)), 'off: nobody answers');
+        streamed = '';
+        await start(true);
+        assert.strictEqual((await request(PORT, 'GET', '/api/state')).json.settings.autoTrust, true);
+        await until(() => /CHOSE-/.test(strip(streamed)), 10000);
+        assert.ok(/CHOSE-YES/.test(strip(streamed)), 'the pointer was moved to Yes before Enter');
+      } finally {
+        sreq.destroy();
+        await request(PORT, 'POST', '/api/settings', { body: { autoTrust: false }, headers: H });
+        for (const id of ids) {
+          await request(PORT, 'POST', '/api/term/kill', { body: { id }, headers: H });
+          await sleep(300);
+          await request(PORT, 'POST', '/api/term/forget', { body: { id }, headers: H });
+        }
+      }
     });
 
     await check('http: a new chat started from a project joins it; images go into the prompt', async () => {

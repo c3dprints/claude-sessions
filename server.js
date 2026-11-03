@@ -25,6 +25,7 @@ const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
 const { giveWindowIcon } = require('./lib/windowicon');
 const teams = require('./lib/teams');
+const trustprompt = require('./lib/trustprompt');
 
 const PORT = Number(process.env.CS_PORT || 8930);
 const HOST = '127.0.0.1';
@@ -179,6 +180,7 @@ function snapshot() {
       terminal: store.state.settings.terminal || null,
       remote: !!store.state.settings.remote,
       teamTalk: store.state.settings.teamTalk !== false,
+      autoTrust: !!store.state.settings.autoTrust,
     },
   };
 }
@@ -322,6 +324,7 @@ async function startTerminal(cwd, resumeId, b) {
   const team = store.state.settings.teamTalk !== false ? teams.writeConfig(DATA_DIR, APP_DIR, PORT) : null;
   const r = await host.request({ t: 'spawn', cwd: dir, command: claudeCommand(resumeId, team && team.file), resumeId: resumeId || null, ...size(b) });
   if (team) { store.state.teamKeys[team.key] = r.session.id; store.save(); }
+  if (store.state.settings.autoTrust) trustWatch.set(r.session.id, { screen: new trustprompt.Screen(), until: Date.now() + TRUST_WATCH_MS, moves: 0, timer: null });
   log(`terminal ${r.session.id} started in ${dir}${resumeId ? ' resuming ' + resumeId : ''}`);
   return { ok: true, id: r.session.id };
 }
@@ -354,6 +357,35 @@ function trackPasteMode(msg) {
   } else if (msg.t === 'exit') {
     bracketed.delete(msg.session.id);
   }
+}
+
+// With settings.autoTrust on, a terminal the app starts is watched until Claude Code asks
+// whether to trust its folder; the pointer is moved to "Yes, I trust this folder" and Enter
+// pressed (lib/trustprompt.js). Keys go once the screen has been still for a moment.
+const TRUST_WATCH_MS = 60000;
+const TRUST_MAX_MOVES = 4;
+const trustWatch = new Map(); // terminal id -> { screen, until, moves, timer }
+
+function answerTrust(msg) {
+  const id = msg.t === 'exit' ? msg.session.id : msg.id;
+  const w = trustWatch.get(id);
+  if (!w) return;
+  clearTimeout(w.timer);
+  if (msg.t === 'exit' || Date.now() > w.until) { trustWatch.delete(id); return; }
+  if (msg.t !== 'out') return;
+  w.screen.feed(Buffer.from(msg.data, 'base64').toString('utf8'));
+  w.timer = setTimeout(() => {
+    const key = trustprompt.keyFor(w.screen);
+    if (!key || trustWatch.get(id) !== w) return;
+    if (key === '\r') {
+      trustWatch.delete(id);
+      host.request({ t: 'input', id, data: key }).then(() => log(`terminal ${id}: trusted its folder`), () => {});
+    } else if (++w.moves > TRUST_MAX_MOVES) {
+      trustWatch.delete(id);
+    } else {
+      host.request({ t: 'input', id, data: key }).catch(() => {});
+    }
+  }, 300);
 }
 
 function connectedTids() { return new Set(Object.values(store.state.teamKeys)); }
@@ -555,6 +587,7 @@ function replayAll(client) {
 
 host.on('event', (msg) => {
   trackPasteMode(msg);
+  answerTrust(msg);
   if (msg.t === 'exit' && msg.session && removing.has(msg.session.id)) forgetTerm(msg.session.id);
   for (const c of streams) {
     if (msg.t === 'out' && c.pending.has(msg.id)) continue;
@@ -1122,6 +1155,7 @@ const routes = {
     if (b.terminal !== undefined) store.state.settings.terminal = checkTerminalLook(b.terminal);
     if (typeof b.autoUpdate === 'boolean') store.state.settings.autoUpdate = b.autoUpdate;
     if (typeof b.teamTalk === 'boolean') store.state.settings.teamTalk = b.teamTalk;
+    if (typeof b.autoTrust === 'boolean') store.state.settings.autoTrust = b.autoTrust;
     if (typeof b.startWithWindows === 'boolean' && !TEST_MODE) await startup.setEnabled(b.startWithWindows);
     store.save();
     return snapshot().settings;
