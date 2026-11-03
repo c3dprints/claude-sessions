@@ -59,7 +59,8 @@ More help, including how to uninstall, is in the [wiki](https://github.com/c3dpr
 - **Move here**: ends an idle Windows Terminal session and continues the same conversation inside the app.
 - **Recently closed**: when a session goes away it shows up here (kept 7 days) with **Reopen** (in the app) or **Terminal** (in Windows Terminal), both running `claude --resume <id>` in the same folder.
 - **History**: the last 14 days of sessions, searchable, each one reopenable.
-- **Projects**: name, color and folders. Sessions in a project's folders join it by themselves; any session can be put in or kept out of a project by hand, from its chip, by dragging it onto the project in the sidebar, or many at once with **Add sessions…** (lists every session of any age). Each project has its own page, which keeps its sessions however old they are.
+- **Projects**: name, color and folders. Sessions in a project's folders join it by themselves; any session can be put in or kept out of a project by hand, from its chip, by dragging it onto the project in the sidebar, or many at once with **Add sessions…** (lists every session of any age). Each project has its own page, which keeps its sessions however old they are. **New chat** on a project's page (in one of its folders, or any recent folder) starts a session that joins that project by itself.
+- **Images in prompts**: paste an image, drop image files on a terminal, or use **+ Image** (also **Add image…** in the right-click menu, and from a phone). The app saves it under `data\images` (kept 30 days) and pastes its path into the prompt, which Claude Code shows as `[Image #1]`.
 - **Plan usage** in the header (current 5-hour session and week, with reset times) and a **Context and usage** view that splits each session's context window like `/context`.
 - **Skills**: every skill and command from `~/.claude/skills`, claude.ai, plugins and project folders, with its instructions and token cost.
 - **Wiki**: the markdown pages in the wiki folders (picked under **Folders**) and Claude's auto memory, searchable.
@@ -85,7 +86,7 @@ Built-in terminals have three parts:
 | `ptyhost.js` | The session host: a separate background process that owns every in-app session and keeps 2 MB of scrollback per session. The dashboard talks to it over a named pipe with a secret token (`data\host.token`). Because it is separate, restarting or updating the dashboard never ends a session. It is only replaced after an update once no session is running on it. |
 | `public/vendor/xterm.js` | The terminal on the page (xterm.js 5.5.0, MIT, see `LICENSE-xterm.txt`). One event stream carries every session's output; keystrokes go back as small POSTs. |
 
-Ctrl+C copies when text is selected and interrupts Claude otherwise. Ctrl+V pastes text; with an image on the clipboard it sends Alt+V so Claude Code reads the image itself.
+Ctrl+C copies when text is selected and interrupts Claude otherwise. Ctrl+V pastes text; an image on the clipboard is uploaded and added to the prompt (see Images in prompts).
 
 Tab jumping for Windows Terminal sessions uses Windows UI Automation (`scripts/focus-tab.ps1`).
 

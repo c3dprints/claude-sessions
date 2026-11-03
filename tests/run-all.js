@@ -870,6 +870,42 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.ok(idle.json.id);
     });
 
+    await check('http: a new chat started from a project joins it; images go into the prompt', async () => {
+      const SC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      const state = async () => (await request(PORT, 'GET', '/api/state')).json;
+      // No folders: the chat can only join by the choice made when starting it.
+      const p = await request(PORT, 'POST', '/api/projects/save', { body: { name: 'Img', color: '#5b9cf6', folders: [] }, headers: H });
+      assert.strictEqual(p.status, 200, JSON.stringify(p.json));
+      const pid = p.json.id;
+      assert.strictEqual((await request(PORT, 'POST', '/api/new', { body: { cwd: fx.work, projectId: 'nope' }, headers: H })).status, 404);
+      const r = await request(PORT, 'POST', '/api/new', { body: { cwd: fx.work, projectId: pid, cols: 80, rows: 24 }, headers: H });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      const tid = r.json.id;
+      assert.strictEqual(JSON.parse(fs.readFileSync(path.join(data, 'state.json'), 'utf8')).termProject[tid], pid);
+      const t = await until(async () => (await state()).terminals.list.find((x) => x.id === tid && x.pid), 15000);
+      const regFile = path.join(fx.dir, 'sessions', `${t.pid}.json`);
+      fs.writeFileSync(regFile, JSON.stringify({ pid: t.pid, sessionId: SC, cwd: fx.work, startedAt: 20, status: 'idle', kind: 'interactive' }));
+      try {
+        await until(async () => (await state()).live.some((s) => s.sessionId === SC && s.project === pid), 15000);
+        const saved = JSON.parse(fs.readFileSync(path.join(data, 'state.json'), 'utf8'));
+        assert.strictEqual(saved.assign[SC], pid, 'chosen by hand, so it stays');
+        assert.ok(!saved.termProject[tid], 'nothing left waiting');
+
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+        const img = await request(PORT, 'POST', '/api/term/image', { body: { id: tid, name: 'a.png', data: png.toString('base64') }, headers: H });
+        assert.strictEqual(img.status, 200, JSON.stringify(img.json));
+        assert.ok(img.json.path.startsWith(path.join(data, 'images')) && img.json.path.endsWith('.png'));
+        assert.ok(fs.readFileSync(img.json.path).equals(png));
+        const bad = await request(PORT, 'POST', '/api/term/image', { body: { id: tid, data: Buffer.from('<svg/>').toString('base64') }, headers: H });
+        assert.strictEqual(bad.status, 400, 'not an image by its bytes');
+        assert.strictEqual((await request(PORT, 'POST', '/api/term/image', { body: { id: 'nope', data: png.toString('base64') }, headers: H })).status, 404);
+      } finally {
+        fs.rmSync(regFile, { force: true });
+        await request(PORT, 'POST', '/api/term/kill', { body: { id: tid }, headers: H });
+        await request(PORT, 'POST', '/api/projects/delete', { body: { id: pid }, headers: H });
+      }
+    });
+
     await check('http: groups: new sessions side by side, a message waits until idle, then is typed in; a run of messages pauses', async () => {
       let streamed = '';
       const sreq = http.get({ host: '127.0.0.1', port: PORT, path: '/api/term/stream', headers: { Host: `127.0.0.1:${PORT}` } }, (res) => {

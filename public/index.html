@@ -359,6 +359,15 @@
   #termStack { flex: 1; position: relative; min-height: 0; }
   .term-pane { position: absolute; inset: 0; padding: 8px 4px 4px 12px; visibility: hidden; pointer-events: none; }
   .term-pane.on { visibility: visible; pointer-events: auto; }
+  .term-pane.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
+  .phead .newin { position: relative; display: inline-block; }
+  .phead .newin > summary { list-style: none; }
+  .phead .newin > summary::-webkit-details-marker { display: none; }
+  .phead .newin .pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px; max-height: 300px; overflow: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  .phead .newin .pop button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .phead .newin .pop button:hover { background: var(--surface-2); }
+  .phead .newin .pop .hint { color: var(--muted); font-size: 12px; padding: 6px 8px 2px; }
   .term-pane .xterm { height: 100%; }
   .ended-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: color-mix(in srgb, var(--closed) 14%, var(--surface)); border-top: 1px solid var(--border); }
   .ended-bar[hidden] { display: none; }
@@ -590,6 +599,8 @@
         <span id="tProj"></span>
         <span class="spacer"></span>
         <span id="tCtx"></span>
+        <button class="btn small ghost" data-act="img-pick" title="Add images to the prompt. You can also paste them, or drop image files on the terminal.">+ Image</button>
+        <input type="file" id="imgFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
         <span id="tEnd"></span>
       </div>
       <div class="host-warn" id="hostWarn" hidden></div>
@@ -1097,14 +1108,29 @@ function getTerm(id) {
     if (e.ctrlKey && k === 'v') return false;
     return true;
   });
-  // An image on the clipboard has no text to paste; Claude Code reads it itself on Alt+V (Ctrl+V on macOS).
+  // An image on the clipboard, or image files dropped on the terminal, go to the
+  // server, which pastes their saved path into the prompt (works from a phone too).
   el.addEventListener('paste', (e) => {
     const cd = e.clipboardData;
-    if (cd && !cd.getData('text') && [...cd.items].some((i) => i.kind === 'file')) {
+    const files = cd ? [...cd.files] : [];
+    if (files.length && !cd.getData('text')) {
       e.preventDefault();
       e.stopPropagation();
-      sendInput(id, MAC ? '\x16' : '\x1bv');
+      uploadImages(id, files);
     }
+  }, true);
+  el.addEventListener('dragover', (e) => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    el.classList.add('drop');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drop'));
+  el.addEventListener('drop', (e) => {
+    el.classList.remove('drop');
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    uploadImages(id, [...e.dataTransfer.files]);
   }, true);
   t = { term, fit, el, sent: '', timer: null };
   terms.set(id, t);
@@ -1151,6 +1177,35 @@ function touchScroll(term, el, id) {
   }, { passive: false, capture: true });
   el.addEventListener('touchend', (e) => { if (moved) e.stopPropagation(); lastY = null; }, { capture: true });
 }
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+async function uploadImages(id, files) {
+  const imgs = files.filter((f) => IMAGE_TYPES.includes(f.type));
+  if (!imgs.length) return toast('Only PNG, JPEG, GIF and WebP images can be added', true);
+  for (const f of imgs) {
+    if (f.size > 15 * 1048576) { toast(`${f.name || 'That image'} is over 15 MB`, true); continue; }
+    toast(imgs.length > 1 ? `Adding ${f.name}…` : 'Adding image…');
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1] || '');
+        r.onerror = () => reject(new Error('could not read the image'));
+        r.readAsDataURL(f);
+      });
+      await api('/api/term/image', { id, name: f.name || '', data });
+    } catch (e) { toast(e.message, true); return; }
+  }
+  toast(imgs.length > 1 ? `${imgs.length} images added to the prompt` : 'Image added to the prompt');
+  const t = terms.get(id);
+  if (t) t.term.focus();
+}
+let imgFor = null; // terminal the file picker adds images to
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'imgFile') return;
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (imgFor && files.length) uploadImages(imgFor, files);
+});
 
 const inq = new Map();
 const sending = new Set();
@@ -1351,7 +1406,7 @@ function renderFolders() {
   for (const p of S.projects) {
     if (!p.folders.length) continue;
     out.push(`<div class="hint"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</div>`);
-    out.push(...p.folders.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" title="${esc(f)}">${esc(home(f))}</button>`));
+    out.push(...p.folders.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="${esc(f)} (joins ${esc(p.name)})">${esc(home(f))}</button>`));
   }
   out.push(`<div class="hint">${S.projects.some((p) => p.folders.length) ? 'Recent folders' : 'Start Claude in this app, in:'}</div>`);
   out.push(S.folders.length
@@ -1444,9 +1499,16 @@ function renderProjHead() {
     <button class="btn" data-act="proj-edit" data-pid="${esc(p.id)}">Edit project</button>
     <div class="gchips">${S.groups.filter((g) => g.projectId === p.id).map((g) => `<button class="btn small" data-act="go" data-view="group" data-arg="${esc(g.id)}"><span style="color:${esc(p.color)}">▦</span> ${esc(g.name)} · ${g.members.length}</button>`).join('')}
       <button class="btn small ghost" data-act="group-new" data-pid="${esc(p.id)}" title="Sessions of this project side by side, which can message each other">+ New group</button></div>
-    <div class="folders">${p.folders.length
-      ? p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" title="Start a new Claude session in ${esc(f)}">+ New session in ${esc(home(f))}</button>`).join('')
-      : '<span class="none">No folders yet. Sessions you put in this project by hand show up here. Add a folder to start new sessions from here.</span>'}</div></div>`;
+    <div class="folders">${p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="Start a new chat in ${esc(f)}; it joins ${esc(p.name)}">+ New chat in ${esc(home(f))}</button>`).join('')}
+      ${newInOther(p)}</div></div>`;
+}
+
+// "New chat in another folder": any recent folder, and the chat still joins this project.
+function newInOther(p) {
+  const others = S.folders.filter((f) => !p.folders.includes(f));
+  if (!others.length) return p.folders.length ? '' : '<span class="none">No folders yet. Add one with Edit project, or start one session from a terminal first.</span>';
+  return `<details class="newin"><summary class="btn small ghost" title="Start a new chat in another folder; it joins ${esc(p.name)}">+ New chat in ${p.folders.length ? 'another ' : 'a '}folder…</summary>
+    <div class="pop"><div class="hint">Joins ${esc(p.name)}</div>${others.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')}</div></details>`;
 }
 
 function renderLive() {
@@ -1565,7 +1627,7 @@ function renderCmenu(sub) {
   } else {
     const busy = s && s.status === 'busy';
     h = `<div class="hint">${esc(s ? label(s) : 'New session')}${t && t.exited ? ' (ended)' : ''}</div>`;
-    if (inApp) h += item('open', 'Open');
+    if (inApp) h += item('open', 'Open') + item('image', 'Add image…', ' title="Adds an image to its prompt (you can also paste or drop one on the terminal)"');
     else if (open) h += item('focus', `Go to its ${WT} tab`);
     else if (s) h += item('resume', 'Reopen');
     if (s) h += item('rename', 'Rename…') + item('project', 'Move to project <span class="k">▸</span>');
@@ -1629,6 +1691,7 @@ async function cmenuAction(op) {
       break;
     }
     case 'project': renderCmenu('project'); break;
+    case 'image': imgFor = tid; $('#imgFile').click(); break;
     case 'pause': act('/api/term/pause', { id: tid }, 'Paused; it stays open'); break;
     case 'continue': act('/api/term/continue', { id: tid }, 'Continuing'); break;
     case 'end': sid && S.live.some((v) => v.sessionId === sid) ? act('/api/session/end', { sessionId: sid }, 'Ending session…') : act('/api/term/kill', { id: tid }, 'Ending session…'); break;
@@ -2773,7 +2836,15 @@ document.addEventListener('click', async (e) => {
     case 'cm': await cmenuAction(b.dataset.op); break;
     case 'mark': b.disabled = true; await act('/api/session/mark', { sessionId: id, [b.dataset.k]: b.dataset.v === '1' }, 'Back in the lists'); break;
     case 'rename': editing = id; renderLive(); break;
-    case 'new': $('#newMenu').open = false; await openNew('/api/new', { cwd: b.dataset.cwd }, 'Starting Claude…'); break;
+    case 'new': {
+      $('#newMenu').open = false;
+      const dd = b.closest('details.newin');
+      if (dd) dd.open = false;
+      const pid = b.dataset.pid || null;
+      await openNew('/api/new', { cwd: b.dataset.cwd, projectId: pid }, pid ? `Starting a chat in ${(project(pid) || {}).name || 'the project'}…` : 'Starting Claude…');
+      break;
+    }
+    case 'img-pick': if (current) { imgFor = current; $('#imgFile').click(); } break;
     case 'kill':
       endArmed = current;
       renderTermBar();

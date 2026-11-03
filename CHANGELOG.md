@@ -2,6 +2,13 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.14 (2026-11-03)
+
+Images in prompts, and new chats that join their project.
+
+- **Add images to a prompt**: paste one (Ctrl+V), drop image files on a terminal, click **+ Image** above the terminal, or right-click a session in the app and pick **Add image…** (handy in groups). It works from a phone too. The image is saved in the app's data folder (`images`, kept 30 days) and its path is pasted into the prompt, which Claude Code shows as `[Image #1]`. PNG, JPEG, GIF and WebP up to 15 MB; the file is checked by its contents, not its name.
+- **New chat from a project**: the buttons on a project's page now read **+ New chat in <folder>**, and **+ New chat in another folder…** offers any recent folder. A chat started there joins the project as soon as Claude gives it a session id, even when its folder belongs to another project or to none. The project folders in the sidebar's **New session** menu do the same.
+
 ## 1.5.13 (2026-11-02)
 
 A Mac installer too.

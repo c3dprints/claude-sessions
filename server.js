@@ -35,6 +35,9 @@ const POLL_MS = 3000;
 const UPDATE_EVERY_MS = 6 * 3600000;
 const HISTORY_TTL_MS = 15000;
 const MAX_BODY = 256 * 1024; // pastes into a terminal can be large
+const MAX_IMAGE = 15 * 1048576; // an image added to a prompt; it arrives as base64, a third bigger
+const IMAGE_DIR = path.join(DATA_DIR, 'images');
+const IMAGE_KEEP_MS = 30 * 86400000;
 // Tests pass a fixed pid list instead of asking tasklist, switch off Windows
 // Terminal actions, and may replace the claude command with a harmless one.
 const FAKE_PIDS = process.env.CS_FAKE_PIDS !== undefined
@@ -55,6 +58,43 @@ function log(msg) {
   } catch { /* logging must never take the server down */ }
 }
 
+// The kind of image by its first bytes (the name or type the browser gives is not trusted).
+function imageType(b) {
+  if (b.length > 8 && b.readUInt32BE(0) === 0x89504e47) return 'png';
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.length > 6 && b.toString('latin1', 0, 4) === 'GIF8') return 'gif';
+  if (b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'webp';
+  return null;
+}
+
+// Images added to prompts are kept 30 days, long enough for the chat to look back at them.
+function pruneImages() {
+  try {
+    for (const f of fs.readdirSync(IMAGE_DIR)) {
+      const p = path.join(IMAGE_DIR, f);
+      if (Date.now() - fs.statSync(p).mtimeMs > IMAGE_KEEP_MS) fs.unlinkSync(p);
+    }
+  } catch { /* no images yet */ }
+}
+
+// A new chat started from a project joins it once Claude has given it a session id.
+function claimProjects() {
+  const pending = Object.entries(store.state.termProject);
+  // Until the session host has answered, every terminal would look gone.
+  if (!pending.length || !host.sock || !host.sessions.size) return;
+  const terms = appTerminals();
+  for (const [tid, pid] of pending) {
+    const t = terms.find((x) => x.id === tid);
+    if (t && !t.sessionId && !t.exited) continue;
+    if (t && t.sessionId && store.state.projects.some((p) => p.id === pid) && !store.state.assign[t.sessionId]) {
+      store.state.assign[t.sessionId] = pid;
+      log(`session ${t.sessionId} joined project ${pid}`);
+    }
+    delete store.state.termProject[tid];
+  }
+  store.save();
+}
+
 // ---- live state ------------------------------------------------------------
 
 let live = [];
@@ -71,6 +111,7 @@ async function poll() {
     // Without a trustworthy pid list every session would look closed, so skip tracking.
     if (pids) store.observe(live);
     tendGroups();
+    claimProjects();
   } catch (e) {
     log(`poll failed: ${e.stack || e}`);
   } finally {
@@ -632,16 +673,16 @@ function send(res, code, body, type = 'application/json; charset=utf-8') {
   res.end(data);
 }
 
-function readBody(req) {
+function readBody(req, limit = MAX_BODY) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size <= MAX_BODY) chunks.push(c);
+      if (size <= limit) chunks.push(c);
     });
     req.on('end', () => {
-      if (size > MAX_BODY) return reject(Object.assign(new Error('body too large'), { code: 413 }));
+      if (size > limit) return reject(Object.assign(new Error('body too large'), { code: 413 }));
       if (!chunks.length) return resolve({});
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { reject(Object.assign(new Error('bad json'), { code: 400 })); }
     });
@@ -685,15 +726,20 @@ const routes = {
     return startTerminal(cwd, b.sessionId, b);
   },
 
+  // projectId: the new chat joins that project as soon as Claude gives it a session id (claimProjects).
   'POST /api/new': async (b) => {
     if (!knownFolder(b.cwd)) throw fail(400, 'pick a folder from the list');
+    const pid = b.projectId || null;
+    if (pid && !store.state.projects.some((p) => p.id === pid)) throw fail(404, 'no such project');
     if (b.where === 'terminal') {
       const args = terminal.claudeTabArgs(b.cwd);
       if (TEST_MODE) return { ok: true, test: true, args };
       terminal.newSession(b.cwd);
       return { ok: true };
     }
-    return startTerminal(b.cwd, undefined, b);
+    const r = await startTerminal(b.cwd, undefined, b);
+    if (pid) { store.state.termProject[r.id] = pid; store.save(); }
+    return r;
   },
 
   // Bring a Windows Terminal session into the app: end it there, resume it here.
@@ -759,6 +805,27 @@ const routes = {
     const g = teams.groupOf(store.state.groups, t.id);
     if (g && g.run && !g.paused) g.run = 0;
     return { ok: true };
+  },
+
+  // An image for the prompt (pasted, dropped or picked, also from a phone): saved
+  // under data/images and its path pasted into the prompt, which Claude Code turns
+  // into an attached image the same way as a file dragged onto a terminal.
+  'POST /api/term/image': async (b) => {
+    const t = termOf(b.id);
+    if (t.exited) throw fail(409, 'that session has ended');
+    const buf = Buffer.from(typeof b.data === 'string' ? b.data : '', 'base64');
+    const ext = imageType(buf);
+    if (!ext) throw fail(400, 'only PNG, JPEG, GIF and WebP images can be added');
+    if (buf.length > MAX_IMAGE) throw fail(413, `images up to ${MAX_IMAGE / 1048576} MB`);
+    fs.mkdirSync(IMAGE_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const file = path.join(IMAGE_DIR, `${stamp}-${crypto.randomBytes(3).toString('hex')}.${ext}`);
+    fs.writeFileSync(file, buf);
+    const text = (/\s/.test(file) ? `"${file}"` : file) + ' ';
+    await host.request({ t: 'input', id: t.id, data: bracketed.get(t.id) ? `\x1b[200~${text}\x1b[201~` : text });
+    pausedTerms.delete(t.id);
+    log(`image ${path.basename(file)} (${buf.length} bytes) added to terminal ${t.id}`);
+    return { ok: true, path: file };
   },
 
   // ---- groups
@@ -1349,7 +1416,7 @@ async function handle(req, res, isRemote = false) {
   const route = routes[`${req.method} ${url.pathname}`];
   if (!route) return send(res, 404, { error: 'not found' });
   try {
-    const body = req.method === 'POST' ? await readBody(req) : {};
+    const body = req.method === 'POST' ? await readBody(req, url.pathname === '/api/term/image' ? MAX_IMAGE * 1.4 : MAX_BODY) : {};
     send(res, 200, await route(body, url, req));
   } catch (e) {
     const code = Number.isInteger(e.code) ? e.code : 500;
@@ -1371,7 +1438,8 @@ server.once('listening', () => {
   // An update may have changed the status line script; refresh the copy Claude Code runs.
   try { if (usage.statusLineState(CLAUDE_DIR).enabled) usage.installScript(DATA_DIR, APP_DIR); } catch (e) { log(`status line copy failed: ${e.message}`); }
   usage.pruneStatus(DATA_DIR);
-  setInterval(() => usage.pruneStatus(DATA_DIR), 86400000);
+  pruneImages();
+  setInterval(() => { usage.pruneStatus(DATA_DIR); pruneImages(); }, 86400000);
   if (!TEST_MODE) {
     setTimeout(checkForUpdate, 30000);
     setInterval(checkForUpdate, UPDATE_EVERY_MS);
