@@ -32,6 +32,8 @@ public static class AppWindow {
 
   [DllImport("shell32.dll")]
   static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+  static extern int SHGetPropertyStoreFromParsingName(string path, IntPtr bc, int flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
   delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
@@ -65,6 +67,27 @@ public static class AppWindow {
     try { s.SetValue(ref k, ref v); } finally { Marshal.FreeCoTaskMem(v.p); }
   }
 
+  // The app ID a shortcut file carries, or null.
+  public static string LinkId(string lnk) {
+    var iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+    IPropertyStore s;
+    if (SHGetPropertyStoreFromParsingName(lnk, IntPtr.Zero, 0, ref iid, out s) != 0) return null;
+    try {
+      var k = new PropertyKey { fmtid = AUM, pid = 5 };
+      PropVariant v;
+      s.GetValue(ref k, out v);
+      return v.vt == 31 ? Marshal.PtrToStringUni(v.p) : null;
+    } finally { Marshal.ReleaseComObject(s); }
+  }
+
+  // Stamps the app ID on a shortcut file (2 = GPS_READWRITE).
+  public static void SetLinkId(string lnk, string id) {
+    var iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+    IPropertyStore s;
+    Marshal.ThrowExceptionForHR(SHGetPropertyStoreFromParsingName(lnk, IntPtr.Zero, 2, ref iid, out s));
+    try { Set(s, 5, id); s.Commit(); } finally { Marshal.ReleaseComObject(s); }
+  }
+
   public static void Apply(IntPtr h, string id, string relaunch, string name, string icon) {
     var iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
     IPropertyStore s;
@@ -85,13 +108,34 @@ public static class AppWindow {
 }
 '@
 
+$appId = 'c3dprints.ClaudeSessions'
+
+# A Start menu shortcut with the same app ID. Windows then takes the taskbar button's icon,
+# and what pinning it makes, from this shortcut, even while the browser has put its own ID
+# back on the window for a moment.
+try {
+  $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Claude Sessions.lnk'
+  $vbs = Join-Path (Split-Path $PSScriptRoot) 'scripts\launch.vbs'
+  $sh = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+  $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+  if (-not (Test-Path $lnk) -or $sh.Arguments -ne "`"$vbs`"" -or $sh.IconLocation -notlike "$($env:CS_ICON)*" -or [AppWindow]::LinkId($lnk) -ne $appId) {
+    $sh.TargetPath = $wscript
+    $sh.Arguments = "`"$vbs`""
+    $sh.WorkingDirectory = Split-Path $PSScriptRoot
+    $sh.IconLocation = "$($env:CS_ICON),0"
+    $sh.Description = 'Claude Sessions dashboard'
+    $sh.Save()
+    [AppWindow]::SetLinkId($lnk, $appId)
+  }
+} catch { }
+
 # The window shows up a moment after the browser starts, which can take a while when
 # the browser is not running yet (right after sign-in); wait up to 60 seconds for it.
 $done = @{}
 for ($i = 0; $i -lt 120; $i++) {
   foreach ($h in [AppWindow]::Find()) {
     if ($done.ContainsKey($h)) { continue }
-    [AppWindow]::Apply($h, 'c3dprints.ClaudeSessions', $env:CS_RELAUNCH, 'Claude Sessions', $env:CS_ICON)
+    [AppWindow]::Apply($h, $appId, $env:CS_RELAUNCH, 'Claude Sessions', $env:CS_ICON)
     $done[$h] = $true
   }
   if ($done.Count -gt 0 -and $i -ge 6) { break }

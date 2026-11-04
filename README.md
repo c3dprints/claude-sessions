@@ -158,7 +158,7 @@ The installed copy is a git clone sitting on a release tag. Every 6 hours (and o
 | `scripts/install.ps1`, `scripts/install-mac.sh` | Install or repair |
 | `installer/setup.cs` + `scripts/build-setup.js` | ClaudeSessionsSetup.exe (Windows) |
 | `installer/install-mac.command` + `scripts/build-setup.js` | ClaudeSessionsSetup-mac.zip (macOS; `install-mac.sh` is put inside, the zip keeps it executable) |
-| `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon (run by the launcher) |
+| `scripts/window-icon.ps1` | Gives the app window its own taskbar button and icon, and keeps a Start menu shortcut with the same app ID so a pinned button shows the app's icon (run on each page load) |
 | `public/index.html` | The app |
 
 ## License

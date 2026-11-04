@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.18 (2026-11-04)
+
+- **Pinning to the taskbar shows the app's icon** (Windows): the app now keeps a **Claude Sessions** shortcut in the Start menu carrying the window's app ID, so Windows takes the taskbar button's icon, and what pinning it makes, from that shortcut instead of from Edge or Chrome. It is made or fixed each time the app window opens. A pin made before this (it shows the Edge icon, often named "Microsoft Edge (2)") has to be unpinned once; then pin the app's own button, or right-click **Claude Sessions** in the Start menu and pick **Pin to taskbar**.
+
 ## 1.5.17 (2026-11-04)
 
 - **Take one chat out of a group**: right-click a session that is in a group (its pane, or its entry in the sidebar) and pick **Take out of "<name>"**. Only that chat leaves: it keeps running and opens on its own, and the rest of the group keeps its layout and pane sizes. Messages still waiting for it are dropped. A group left with nobody in it goes too.
