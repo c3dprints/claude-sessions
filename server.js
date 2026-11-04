@@ -892,6 +892,28 @@ const routes = {
     return { ok: true, id: g.id, started: members.filter((m, i) => p.members[i].cwd).map((m) => m.tid) };
   },
 
+  // Takes one session out of its group. The session keeps running; the others keep their
+  // layout. A group left with nobody in it goes too.
+  'POST /api/groups/leave': async (b) => {
+    const g = store.state.groups.find((x) => x.id === b.id);
+    if (!g) throw fail(404, 'no such group');
+    const i = g.members.findIndex((m) => m.tid === b.tid);
+    if (i < 0) throw fail(404, 'that session is not in this group');
+    const [gone] = g.members.splice(i, 1);
+    const n = g.members.length;
+    store.state.teamMsgs = store.state.teamMsgs.filter((m) => !(m.gid === g.id && m.to === gone.tid && !m.deliveredAt));
+    if (!n) {
+      store.state.groups = store.state.groups.filter((x) => x !== g);
+      store.state.teamMsgs = store.state.teamMsgs.filter((m) => m.gid !== g.id);
+    } else {
+      if (Array.isArray(g.sizes) && g.sizes.length === n + 1) g.sizes.splice(i, 1); else g.sizes = g.members.map(() => 1);
+      if (Array.isArray(g.boxes) && g.boxes.length === n + 1) g.boxes.splice(i, 1); else g.boxes = null;
+    }
+    store.save();
+    log(`group ${g.name}: ${gone.role} taken out${n ? '' : '; nobody left, group removed'}`);
+    return { ok: true, removedGroup: !n };
+  },
+
   'POST /api/groups/delete': async (b) => {
     if (!store.state.groups.some((g) => g.id === b.id)) throw fail(404, 'no such group');
     store.state.groups = store.state.groups.filter((g) => g.id !== b.id);

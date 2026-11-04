@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.17 (2026-11-04)
+
+- **Take one chat out of a group**: right-click a session that is in a group (its pane, or its entry in the sidebar) and pick **Take out of "<name>"**. Only that chat leaves: it keeps running and opens on its own, and the rest of the group keeps its layout and pane sizes. Messages still waiting for it are dropped. A group left with nobody in it goes too.
+
 ## 1.5.16 (2026-11-04)
 
 - **Remove a group from the right-click menu**: right-click a group in the sidebar (or a group chip on a project page) for **Open**, **Edit group…** and **Remove group**, and a session that is in a group now has **Remove group "<name>"** too. It asks for a second click. Only the group goes: its chats keep running and stay in your lists.

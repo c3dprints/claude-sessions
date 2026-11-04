@@ -1685,7 +1685,7 @@ function renderCmenu(sub) {
     }
     const g = groupOfTerm(cmFor.tid);
     cmFor.gid = g ? g.id : null;
-    if (g) h += '<hr>' + removeGroupItem(g);
+    if (g) h += '<hr>' + item('g-leave', `Take out of “${esc(g.name)}”`, ' title="Only this chat leaves the group; it keeps running, and the rest of the group stays as it is"') + removeGroupItem(g);
   }
   placeCmenu(h);
 }
@@ -1721,6 +1721,10 @@ async function cmenuAction(op) {
     closePmenu();
     if (op === 'g-open') go('group', gid);
     else if (op === 'g-edit') openGroupEditor(groupById(gid));
+    else if (op === 'g-leave') {
+      const r = await act('/api/groups/leave', { id: gid, tid }, 'Taken out of the group; it keeps running');
+      if (r && r.removedGroup && view === 'group' && curGroup === gid) go('overview');
+    }
     else if (op === 'g-remove') {
       const r = await act('/api/groups/delete', { id: gid }, 'Group removed; its chats keep running');
       if (r && view === 'group' && curGroup === gid) go('overview');

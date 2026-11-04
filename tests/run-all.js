@@ -1089,12 +1089,23 @@ process.stdin.on('data', (d) => {
         assert.strictEqual((await lay({ order: [ta, tb] })).status, 200);
         g = (await state()).groups.find((x) => x.id === gid);
         assert.deepStrictEqual([g.layout, g.grid.cols, g.boxes], ['free', [0.7, 0.3], [bx[1], bx[0]]]);
+        // Taking one session out keeps the others' places; it keeps running.
+        const leave = (id, tid) => request(PORT, 'POST', '/api/groups/leave', { body: { id, tid }, headers: H });
+        assert.strictEqual((await leave(gid, 'nope')).status, 404);
+        const left = await leave(gid, ta);
+        assert.deepStrictEqual([left.status, left.json.removedGroup], [200, false]);
+        g = (await state()).groups.find((x) => x.id === gid);
+        assert.deepStrictEqual([g.members.map((m) => m.role), g.boxes, g.layout], [['Build'], [bx[0]], 'free']);
+        assert.ok((await state()).terminals.list.some((t) => t.id === ta && !t.exited), 'a session taken out keeps running');
         // Moving a session into another group takes it out of this one.
         const other = await save({ name: 'Other', members: [{ role: 'Solo', tid: ta }] });
         assert.strictEqual(other.status, 200);
         g = (await state()).groups.find((x) => x.id === gid);
         assert.deepStrictEqual(g.members.map((m) => m.role), ['Build']);
-        for (const id of [gid, other.json.id]) assert.strictEqual((await request(PORT, 'POST', '/api/groups/delete', { body: { id }, headers: H })).status, 200);
+        // The last one out takes the group with it.
+        assert.strictEqual((await leave(other.json.id, ta)).json.removedGroup, true);
+        assert.ok(!(await state()).groups.some((x) => x.id === other.json.id));
+        assert.strictEqual((await request(PORT, 'POST', '/api/groups/delete', { body: { id: gid }, headers: H })).status, 200);
         assert.strictEqual((await state()).groups.length, 0);
         assert.ok((await state()).terminals.list.some((t) => t.id === ta && !t.exited), 'deleting a group leaves its sessions running');
       } finally {
