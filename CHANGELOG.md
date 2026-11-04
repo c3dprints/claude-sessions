@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.16 (2026-11-04)
+
+- **Remove a group from the right-click menu**: right-click a group in the sidebar (or a group chip on a project page) for **Open**, **Edit group…** and **Remove group**, and a session that is in a group now has **Remove group "<name>"** too. It asks for a second click. Only the group goes: its chats keep running and stay in your lists.
+
 ## 1.5.15 (2026-11-03)
 
 - **Trust the folder by itself** (Settings, **New chats**, off by default): when Claude Code asks whether you trust the folder of a session the app starts, the app picks **Yes, I trust this folder** for you, so a new chat goes straight to the prompt. Claude Code 2.x lists **No, exit** first with the pointer on it, so the app reads the screen and moves the pointer to Yes before pressing Enter; it never presses Enter anywhere else. It stops watching after a minute.

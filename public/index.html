@@ -1616,7 +1616,29 @@ function openCmenu(x, y, sid, tid) {
   renderCmenu();
 }
 
+// The menu on a group itself (sidebar, a project's group chips).
+function openGmenu(x, y, gid) {
+  cmFor = { gid, armed: null, x, y };
+  renderCmenu();
+}
+
+// A session's group, if it is in one.
+function groupOfTerm(tid) { return tid ? S.groups.find((g) => g.members.some((m) => m.tid === tid)) || null : null; }
+
+function removeGroupItem(g) {
+  return cmFor.armed === 'g-remove'
+    ? `<button data-act="cm" data-op="g-remove" class="danger"><b>Click again to remove the group</b></button>`
+    : `<button data-act="cm" data-op="g-remove" class="danger" title="Only the group goes; its chats keep running and stay in your lists">Remove group${cmFor.sid || cmFor.tid ? ` “${esc(g.name)}”` : ''}</button>`;
+}
+
 function renderCmenu(sub) {
+  if (cmFor.gid && !cmFor.sid && !cmFor.tid) {
+    const g = groupById(cmFor.gid);
+    if (!g) return closePmenu();
+    const item = (op, text) => `<button data-act="cm" data-op="${op}">${text}</button>`;
+    return placeCmenu(`<div class="hint">${esc(g.name)} · ${g.members.length} session${g.members.length === 1 ? '' : 's'}</div>`
+      + item('g-open', 'Open') + item('g-edit', 'Edit group…') + '<hr>' + removeGroupItem(g));
+  }
   const s = cmFor.sid ? anySession(cmFor.sid) : null;
   const t = cmFor.tid ? S.terminals.list.find((v) => v.id === cmFor.tid) : null;
   const open = !!(s && S.live.includes(s)) || !!(t && !t.exited);
@@ -1661,7 +1683,14 @@ function renderCmenu(sub) {
         : cmFor.armed === 'archive' ? item('archive', '<b>Click again: end and archive</b>', ' class="danger"')
           : item('archive', 'Archive', ` title="${open ? 'Ends it and files' : 'Files'} it under Archived and hidden"`);
     }
+    const g = groupOfTerm(cmFor.tid);
+    cmFor.gid = g ? g.id : null;
+    if (g) h += '<hr>' + removeGroupItem(g);
   }
+  placeCmenu(h);
+}
+
+function placeCmenu(h) {
   const m = $('#pmenu');
   m.innerHTML = h;
   m.hidden = false;
@@ -1671,7 +1700,13 @@ function renderCmenu(sub) {
 
 document.addEventListener('contextmenu', (e) => {
   if (e.target.closest('.xterm, input, textarea')) return;
-  const el = e.target.closest('nav.side [data-sid], nav.side [data-tid], #live [data-sid], #closed [data-sid], #history [data-sid], #arc [data-sid], #gPanes [data-tid]');
+  const ge = e.target.closest('#sideGroups [data-view="group"], .gchips [data-view="group"]');
+  if (ge) {
+    e.preventDefault();
+    openGmenu(e.clientX, e.clientY, ge.dataset.arg);
+    return;
+  }
+  const el =e.target.closest('nav.side [data-sid], nav.side [data-tid], #live [data-sid], #closed [data-sid], #history [data-sid], #arc [data-sid], #gPanes [data-tid]');
   if (!el) return;
   const sid = el.dataset.sid || (el.closest('[data-sid]') || {}).dataset?.sid || null;
   e.preventDefault();
@@ -1680,7 +1715,18 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 async function cmenuAction(op) {
-  const { sid, tid } = cmFor;
+  const { sid, tid, gid } = cmFor;
+  if (op.startsWith('g-')) {
+    if (op === 'g-remove' && cmFor.armed !== op) { cmFor.armed = op; renderCmenu(); return; }
+    closePmenu();
+    if (op === 'g-open') go('group', gid);
+    else if (op === 'g-edit') openGroupEditor(groupById(gid));
+    else if (op === 'g-remove') {
+      const r = await act('/api/groups/delete', { id: gid }, 'Group removed; its chats keep running');
+      if (r && view === 'group' && curGroup === gid) go('overview');
+    }
+    return;
+  }
   const s = sid ? anySession(sid) : null;
   const open = !!(s && S.live.includes(s)) || !!(tid && S.terminals.list.some((v) => v.id === tid && !v.exited));
   // Ending something asks once more in the menu itself.
