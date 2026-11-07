@@ -686,6 +686,32 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.ok(s.live.every((x) => x.project === null));
     });
 
+    await check('http: a new chat can start in a folder inside a project folder, and nowhere outside', async () => {
+      const root = path.join(fx.dir, 'deep-proj');
+      const sub = path.join(root, 'app', 'src');
+      const outside = path.join(fx.dir, 'outside');
+      for (const d of [sub, path.join(root, '.git'), path.join(root, 'node_modules'), outside]) fs.mkdirSync(d, { recursive: true });
+      const pid = (await request(PORT, 'POST', '/api/projects/save', { body: { name: 'Deep', color: '#4fbf8a', folders: [root] }, headers: H })).json.id;
+      const ls = await request(PORT, 'GET', '/api/folders?dir=' + encodeURIComponent(root));
+      assert.strictEqual(ls.status, 200, JSON.stringify(ls.json));
+      assert.deepStrictEqual(ls.json.subs, [{ name: 'app', path: path.join(root, 'app') }], 'hidden folders and node_modules are left out');
+      assert.strictEqual((await request(PORT, 'GET', '/api/folders?dir=' + encodeURIComponent(path.join(root, 'app')))).json.subs[0].path, sub);
+      assert.strictEqual((await request(PORT, 'GET', '/api/folders?dir=' + encodeURIComponent(outside))).status, 400);
+      const start = (cwd) => request(PORT, 'POST', '/api/new', { body: { cwd, where: 'terminal' }, headers: H });
+      assert.strictEqual((await start(sub)).status, 200, 'a folder inside the project folder');
+      assert.strictEqual((await start(root + '\\app\\..\\..\\outside')).status, 400, 'no climbing out with ..');
+      assert.strictEqual((await start(path.join(root, 'missing'))).status, 400, 'only folders that exist');
+      assert.strictEqual((await start(outside)).status, 400);
+      // A project with no folders set offers the folders its sessions ran in.
+      const bare = (await request(PORT, 'POST', '/api/projects/save', { body: { name: 'Bare', color: '#5b9cf6', folders: [] }, headers: H })).json.id;
+      await request(PORT, 'POST', '/api/projects/assign', { body: { sessionId: ID1, projectId: bare }, headers: H });
+      const s = (await request(PORT, 'GET', '/api/state')).json;
+      assert.deepStrictEqual(s.projects.find((p) => p.id === bare).used, [fx.work]);
+      assert.deepStrictEqual(s.projects.find((p) => p.id === pid).used, []);
+      await request(PORT, 'POST', '/api/projects/assign', { body: { sessionId: ID1, projectId: null }, headers: H });
+      for (const id of [pid, bare]) await request(PORT, 'POST', '/api/projects/delete', { body: { id }, headers: H });
+    });
+
     await check('http: put many sessions in a project at once, old ones stay listed with it', async () => {
       // A session last used 30 days ago: too old for History until it is put in a project.
       const ID4 = '44444444-4444-4444-8444-444444444444';

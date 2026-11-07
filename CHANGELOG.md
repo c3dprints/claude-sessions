@@ -2,6 +2,11 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.20 (2026-11-06)
+
+- **New chats inside a project's folders**: a project's page now offers **+ New chat in** for the folders its sessions ran in too, so a project made by putting sessions in it by hand (no folders set) can start chats. **+ New chat in a folder inside…** walks down from those folders (hidden folders and `node_modules` left out) and starts a chat in the one you pick; it joins the project. The sidebar's **+ New session** menu, the group dialog and Edit project list those folders as well.
+- The server accepts a new chat's folder only when it is on those lists or is an existing folder inside one of them, written out in full (no `..`, and no link leading outside).
+
 ## 1.5.19 (2026-11-05)
 
 - **Claude Sessions.app** is now a native macOS window (`native/mac-app.swift`, built with swiftc) instead of a Chrome app window, so it has its own Dock icon and no longer leaves Chrome processes behind. Closing the window quits the app; the server and sessions keep running. It has the usual menus, so Cmd+C, Cmd+V, Cmd+R (reload) and Cmd+Q work.

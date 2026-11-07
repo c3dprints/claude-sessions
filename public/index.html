@@ -368,6 +368,7 @@
   .phead .newin .pop button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
   .phead .newin .pop button:hover { background: var(--surface-2); }
   .phead .newin .pop .hint { color: var(--muted); font-size: 12px; padding: 6px 8px 2px; }
+  .phead .newin .pop .go { font-weight: 600; color: var(--accent, var(--text)); }
   .term-pane .xterm { height: 100%; }
   .ended-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: color-mix(in srgb, var(--closed) 14%, var(--surface)); border-top: 1px solid var(--border); }
   .ended-bar[hidden] { display: none; }
@@ -1410,9 +1411,9 @@ function renderMeters() {
 function renderFolders() {
   const out = [];
   for (const p of S.projects) {
-    if (!p.folders.length) continue;
+    if (!projFolders(p).length) continue;
     out.push(`<div class="hint"><span class="pdot" style="background:${esc(p.color)}"></span>${esc(p.name)}</div>`);
-    out.push(...p.folders.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="${esc(f)} (joins ${esc(p.name)})">${esc(home(f))}</button>`));
+    out.push(...projFolders(p).map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="${esc(f)} (joins ${esc(p.name)})">${esc(home(f))}</button>`));
   }
   out.push(`<div class="hint">${S.projects.some((p) => p.folders.length) ? 'Recent folders' : 'Start Claude in this app, in:'}</div>`);
   out.push(S.folders.length
@@ -1505,15 +1506,41 @@ function renderProjHead() {
     <button class="btn" data-act="proj-edit" data-pid="${esc(p.id)}">Edit project</button>
     <div class="gchips">${S.groups.filter((g) => g.projectId === p.id).map((g) => `<button class="btn small" data-act="go" data-view="group" data-arg="${esc(g.id)}"><span style="color:${esc(p.color)}">▦</span> ${esc(g.name)} · ${g.members.length}</button>`).join('')}
       <button class="btn small ghost" data-act="group-new" data-pid="${esc(p.id)}" title="Sessions of this project side by side, which can message each other">+ New group</button></div>
-    <div class="folders">${p.folders.map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="Start a new chat in ${esc(f)}; it joins ${esc(p.name)}">+ New chat in ${esc(home(f))}</button>`).join('')}
-      ${newInOther(p)}</div></div>`;
+    <div class="folders">${projFolders(p).map((f) => `<button class="btn small" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="Start a new chat in ${esc(f)}; it joins ${esc(p.name)}">+ New chat in ${esc(home(f))}</button>`).join('')}
+      ${browseOf(p)}${newInOther(p)}</div></div>`;
+}
+
+// A project's folders: the ones set in Edit project, then the ones its sessions ran in.
+function projFolders(p) { return [...p.folders, ...(p.used || [])]; }
+
+// "New chat in a folder inside…": walks down from one of the project's folders.
+let browse = null; // { pid, dir, subs }; dir '' lists the project's folders, subs null while loading
+function browseOf(p) {
+  const mine = projFolders(p);
+  if (!mine.length) return '';
+  const b = browse && browse.pid === p.id ? browse : null;
+  let pop = '';
+  if (b && !b.dir) {
+    pop = `<div class="hint">Joins ${esc(p.name)}. Pick a folder to look inside:</div>` +
+      mine.map((f) => `<button class="mono" data-act="fold-open" data-dir="${esc(f)}" title="${esc(f)}">📁 ${esc(home(f))}</button>`).join('');
+  } else if (b) {
+    const up = mine.includes(b.dir) ? '' : b.dir.replace(/[\\/][^\\/]+$/, '');
+    pop = `<div class="hint mono" title="${esc(b.dir)}">${esc(home(b.dir))}</div>
+      <button class="go" data-act="new" data-cwd="${esc(b.dir)}" data-pid="${esc(p.id)}">▶ Start a chat here</button>
+      <button data-act="fold-open" data-dir="${esc(up)}">↑ Up</button>` +
+      (!b.subs ? '<div class="hint">Loading…</div>'
+        : b.subs.length ? b.subs.map((x) => `<button class="mono" data-act="fold-open" data-dir="${esc(x.path)}" title="${esc(x.path)}">📁 ${esc(x.name)}</button>`).join('')
+        : '<div class="hint">No folders inside this one.</div>');
+  }
+  return `<span class="newin"><button class="btn small ghost" data-act="fold-browse" data-pid="${esc(p.id)}" title="Start a new chat in a folder inside one of this project's folders">+ New chat in a folder inside…</button>${pop ? `<div class="pop">${pop}</div>` : ''}</span>`;
 }
 
 // "New chat in another folder": any recent folder, and the chat still joins this project.
 function newInOther(p) {
-  const others = S.folders.filter((f) => !p.folders.includes(f));
-  if (!others.length) return p.folders.length ? '' : '<span class="none">No folders yet. Add one with Edit project, or start one session from a terminal first.</span>';
-  return `<details class="newin"><summary class="btn small ghost" title="Start a new chat in another folder; it joins ${esc(p.name)}">+ New chat in ${p.folders.length ? 'another ' : 'a '}folder…</summary>
+  const mine = projFolders(p);
+  const others = S.folders.filter((f) => !mine.includes(f));
+  if (!others.length) return mine.length ? '' : '<span class="none">No folders yet. Add one with Edit project, or start one session from a terminal first.</span>';
+  return `<details class="newin"><summary class="btn small ghost" title="Start a new chat in another folder; it joins ${esc(p.name)}">+ New chat in ${mine.length ? 'another ' : 'a '}folder…</summary>
     <div class="pop"><div class="hint">Joins ${esc(p.name)}</div>${others.map((f) => `<button class="mono" data-act="new" data-cwd="${esc(f)}" data-pid="${esc(p.id)}" title="${esc(f)}">${esc(home(f))}</button>`).join('')}</div></details>`;
 }
 
@@ -2012,7 +2039,8 @@ function openProjEditor(p, assignAfter) {
 function renderProjEditor() {
   $('#projColors').innerHTML = COLORS.map((c) => `<button type="button" data-act="proj-color" data-color="${c}" class="${c === editProj.color ? 'on' : ''}" style="background:${c}" aria-label="color ${c}"></button>`).join('');
   const choices = [];
-  for (const f of [...editProj.folders, ...editProj.extra, ...S.folders]) if (!choices.some((x) => x.toLowerCase() === f.toLowerCase())) choices.push(f);
+  const p = project(editProj.id);
+  for (const f of [...editProj.folders, ...editProj.extra, ...(p ? p.used : []), ...S.folders]) if (!choices.some((x) => x.toLowerCase() === f.toLowerCase())) choices.push(f);
   $('#projFolders').innerHTML = choices.map((f) => `<label title="${esc(f)}"><input type="checkbox" value="${esc(f)}" ${editProj.folders.includes(f) ? 'checked' : ''}> ${esc(home(f))}</label>`).join('') ||
     '<div class="side-empty" style="padding:8px">No recent folders. Add one below.</div>';
 }
@@ -2487,7 +2515,7 @@ function openPop(btn, html) {
 function folderChoices(pid) {
   const p = project(pid);
   const out = [];
-  for (const f of [...(p ? p.folders : []), ...S.folders]) if (!out.some((x) => x.toLowerCase() === f.toLowerCase())) out.push(f);
+  for (const f of [...(p ? projFolders(p) : []), ...S.folders]) if (!out.some((x) => x.toLowerCase() === f.toLowerCase())) out.push(f);
   return out;
 }
 
@@ -2866,6 +2894,24 @@ document.addEventListener('click', async (e) => {
   switch (b.dataset.act) {
     case 'side-toggle': document.body.classList.toggle('side-open'); break;
     case 'side-close': document.body.classList.remove('side-open'); break;
+    case 'fold-browse':
+      browse = browse && browse.pid === b.dataset.pid ? null : { pid: b.dataset.pid, dir: '', subs: null };
+      renderProjHead();
+      break;
+    case 'fold-open': {
+      const dir = b.dataset.dir;
+      browse = { ...browse, dir, subs: null };
+      renderProjHead();
+      if (!dir) break;
+      try {
+        const r = await api('/api/folders?dir=' + encodeURIComponent(dir));
+        if (browse && browse.dir === dir) { browse.subs = r.subs; renderProjHead(); }
+      } catch (err) {
+        toast(err.message, true);
+        if (browse && browse.dir === dir) { browse.subs = []; renderProjHead(); }
+      }
+      break;
+    }
     case 'remote-code': await remoteCall('/api/remote/code', {}); break;
     case 'remote-https': {
       const on = b.dataset.v === 'on';
@@ -2904,6 +2950,7 @@ document.addEventListener('click', async (e) => {
       $('#newMenu').open = false;
       const dd = b.closest('details.newin');
       if (dd) dd.open = false;
+      if (browse) { browse = null; renderProjHead(); }
       const pid = b.dataset.pid || null;
       await openNew('/api/new', { cwd: b.dataset.cwd, projectId: pid }, pid ? `Starting a chat in ${(project(pid) || {}).name || 'the project'}…` : 'Starting Claude…');
       break;
@@ -3088,6 +3135,7 @@ document.addEventListener('focusout', (e) => {
 document.addEventListener('click', (e) => {
   const m = $('#newMenu');
   if (m.open && !m.contains(e.target)) m.open = false;
+  if (browse && !e.target.closest('.phead .newin')) { browse = null; renderProjHead(); }
 });
 $('#overview').addEventListener('scroll', closePmenu);
 

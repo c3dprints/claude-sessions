@@ -19,7 +19,7 @@ const updater = require('./lib/updater');
 const startup = require('./lib/startup');
 const library = require('./lib/library');
 const usage = require('./lib/usage');
-const { Store, projectOf } = require('./lib/store');
+const { Store, projectOf, inside } = require('./lib/store');
 const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
@@ -160,14 +160,21 @@ function snapshot() {
     ...s, nickname: nick[s.sessionId] || null, project: projectOf(store.state, s),
     archived: store.state.archived[s.sessionId] || null, hidden: store.state.hidden[s.sessionId] || null,
   });
+  const liveV = live.filter((s) => !ending.has(s.pid)).map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) }));
+  const closedV = closed.map(withNick);
+  const historyV = history.map(withNick);
+  const all = [...liveV, ...closedV, ...historyV];
   return {
     app: { name: 'Claude Sessions', version: pkg.version, platform: process.platform },
     now: Date.now(),
-    live: live.filter((s) => !ending.has(s.pid)).map((s) => ({ ...withNick(s), appId: appByPid.get(s.pid) || null, context: contextBrief(s) })),
-    closed: closed.map(withNick),
-    history: history.map(withNick),
+    live: liveV,
+    closed: closedV,
+    history: historyV,
     folders: recentFolders([...live, ...closed, ...history]).slice(0, 12),
-    projects: store.state.projects,
+    // used: folders the project's sessions ran in, so a project with no folders set can still start chats.
+    projects: store.state.projects.map((p) => ({
+      ...p, used: recentFolders(all.filter((s) => s.project === p.id)).filter((f) => !p.folders.includes(f)).slice(0, 8),
+    })),
     groups: groupsView(terms),
     terminals: { up: host.up, outdated: host.outdated, error: host.error, list: terms },
     usage: usage.planUsage(CLAUDE_DIR, DATA_DIR),
@@ -727,8 +734,22 @@ function fail(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+// A folder new chats may start in: one the app lists, or a folder that exists inside one of them.
+// Paths must be written out in full (no "..", no links leading out), so nothing outside them is reachable.
 function knownFolder(cwd) {
-  return snapshot().folders.includes(cwd) || store.state.projects.some((p) => p.folders.includes(cwd));
+  if (typeof cwd !== 'string' || !cwd) return false;
+  const snap = snapshot();
+  const roots = [...snap.folders, ...snap.projects.flatMap((p) => [...p.folders, ...p.used])];
+  if (roots.includes(cwd)) return true;
+  if (!path.isAbsolute(cwd) || path.resolve(cwd) !== cwd) return false;
+  let real;
+  try {
+    if (!fs.statSync(cwd).isDirectory()) return false;
+    real = fs.realpathSync.native(cwd);
+  } catch { return false; }
+  return roots.some((r) => {
+    try { return inside(cwd, r) && inside(real, fs.realpathSync.native(r)); } catch { return false; }
+  });
 }
 
 const routes = {
@@ -1134,6 +1155,18 @@ const routes = {
   },
 
   // ---- wiki, skills, context, plan usage
+  // The folders inside one a new chat may start in, for the project page's folder picker.
+  'GET /api/folders': (b, url) => {
+    const dir = url.searchParams.get('dir') || '';
+    if (!knownFolder(dir)) throw fail(400, 'pick a folder from the list');
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { throw fail(404, 'that folder cannot be read'); }
+    const subs = ents.filter((d) => d.isDirectory() && !/^[.$]|^node_modules$/i.test(d.name))
+      .map((d) => d.name).sort((x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' })).slice(0, 300)
+      .map((name) => ({ name, path: path.join(dir, name) }));
+    return { dir, subs };
+  },
+
   'GET /api/wiki': async (b, url) => {
     if (url.searchParams.get('fresh')) wikiCache.clear();
     return { groups: await wikiCache() };
