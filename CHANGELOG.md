@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.21 (2026-11-07)
+
+- **Trust the folder by itself works again**: Claude Code 2.1.319 draws the pointer in its folder trust question as a plain `>` instead of `❯`, so the app no longer saw which answer was picked and left the question waiting. It now knows both.
+
 ## 1.5.20 (2026-11-06)
 
 - **New chats inside a project's folders**: a project's page now offers **+ New chat in** for the folders its sessions ran in too, so a project made by putting sessions in it by hand (no folders set) can start chats. **+ New chat in a folder inside…** walks down from those folders (hidden folders and `node_modules` left out) and starts a chat in the one you pick; it joins the project. The sidebar's **+ New session** menu, the group dialog and Edit project list those folders as well.
