@@ -210,6 +210,12 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     // Pointer below Yes: Up.
     t.feed('\x1b[5;2H \x1b[6;2H❯');
     assert.strictEqual(trustprompt.keyFor(t), '\x1b[A');
+    // Claude Code 2.1.319 draws the pointer as a plain >.
+    const u = new trustprompt.Screen();
+    u.feed('\x1b[14;2H> No, exit\x1b[15;4HYes, I trust this folder\x1b[17;2HEnter to confirm · Esc to cancel');
+    assert.strictEqual(trustprompt.keyFor(u), '\x1b[B');
+    u.feed('\x1b[14;2H \x1b[15;2H>');
+    assert.strictEqual(trustprompt.keyFor(u), '\r');
   });
 
   await check('tasklist parsing keeps only claude.exe', () => {
