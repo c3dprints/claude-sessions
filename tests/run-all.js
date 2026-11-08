@@ -20,6 +20,7 @@ const usage = require('../lib/usage');
 const { HostClient } = require('../lib/hostclient');
 const teams = require('../lib/teams');
 const trustprompt = require('../lib/trustprompt');
+const pathsLib = require('../lib/paths');
 
 const WIN = process.platform === 'win32';
 // Harmless stand-ins for claude that print a marker, then wait for typing.
@@ -186,6 +187,23 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     } finally {
       child.kill();
     }
+  });
+
+  await check('paths in terminal text: only ones that exist, the longest, spaces in full paths', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-paths-'));
+    const deep = path.join(base, 'Bambu X1C', 'Ramps');
+    fs.mkdirSync(deep, { recursive: true });
+    fs.mkdirSync(path.join(base, 'lib'));
+    fs.writeFileSync(path.join(base, 'lib', 'x.js'), '');
+    fs.writeFileSync(path.join(base, 'notes.md'), '');
+    const found = (line, cwd = base) => pathsLib.findPaths(line, cwd).map((f) => line.substr(f.start, f.len));
+    assert.deepStrictEqual(found(`Saved to ${deep} and done.`), [deep], 'a full path with a space, stopped before " and"');
+    assert.deepStrictEqual(found(`see ${path.join(base, 'notes.md')}.`), [path.join(base, 'notes.md')], 'the full stop is not part of it');
+    assert.deepStrictEqual(found('● Update(lib/x.js) and lib\\x.js:12, then notes.md'), ['lib/x.js', 'lib\\x.js', 'notes.md']);
+    assert.deepStrictEqual(found('missing.md, lib/nope.js, https://example.com/a.js'), []);
+    assert.deepStrictEqual(found('lib/x.js', null), [], 'relative paths need the folder the terminal is in');
+    assert.strictEqual(pathsLib.resolve('~/x', null), path.join(os.homedir(), 'x'));
+    fs.rmSync(base, { recursive: true, force: true });
   });
 
   await check('trust question: the pointer is moved to Yes, then Enter', () => {
@@ -656,6 +674,15 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(rm.status, 200, JSON.stringify(rm.json));
       assert.ok(!(await listed()));
       assert.strictEqual((await request(PORT, 'POST', '/api/term/remove', { body: { id: r.json.id }, headers: H })).status, 404);
+    });
+
+    await check('http: a path in terminal text is found and opened (not in test mode)', async () => {
+      const f = await request(PORT, 'POST', '/api/paths/find', { body: { line: `cd ${fx.work} now`, cwd: fx.work }, headers: H });
+      assert.deepStrictEqual(f.json.links, [{ start: 3, len: fx.work.length }]);
+      const o = await request(PORT, 'POST', '/api/paths/open', { body: { path: fx.work }, headers: H });
+      assert.strictEqual(o.status, 200, JSON.stringify(o.json));
+      assert.strictEqual(o.json.path, fx.work);
+      assert.strictEqual((await request(PORT, 'POST', '/api/paths/open', { body: { path: path.join(fx.work, 'nope.txt') }, headers: H })).status, 404);
     });
 
     await check('http: oversized body is rejected', async () => {

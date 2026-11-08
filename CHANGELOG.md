@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.22 (2026-11-08)
+
+- **Click a file location to open it**: paths Claude prints in a built-in terminal (full ones like `C:\...` or `~\...`, spaces and all, and ones relative to the session's folder like `lib/x.js`) are underlined on hover; clicking one opens its folder in Explorer (Finder on a Mac) with the file picked out, or opens the folder itself. Only paths that exist on this computer become links. A session's folder on its card, in History, in a group pane and in the terminal's top bar opens the same way. On a phone this is off, since it opens on the PC.
+
 ## 1.5.21 (2026-11-07)
 
 - **Trust the folder by itself works again**: Claude Code 2.1.319 draws the pointer in its folder trust question as a plain `>` instead of `❯`, so the app no longer saw which answer was picked and left the question waiting. It now knows both.

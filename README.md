@@ -54,7 +54,7 @@ More help, including how to uninstall, is in the [wiki](https://github.com/c3dpr
 
 ## What it does
 
-- **Built-in terminals**: start, reopen or move a session into the app and work with Claude right there. Sessions in the app keep running when the window is closed or the app updates itself.
+- **Built-in terminals**: start, reopen or move a session into the app and work with Claude right there. Sessions in the app keep running when the window is closed or the app updates itself. File and folder paths Claude prints are links: click one to open its folder in Explorer (Finder on a Mac) with the file picked out. Session folders shown on cards open the same way.
 - **Sidebar**: every session with its live status (**Working**, **Needs you** when a permission prompt is open, or **Idle**). Click one in the app to switch to it; click one in Windows Terminal to jump to its tab.
 - **Move here**: ends an idle Windows Terminal session and continues the same conversation inside the app.
 - **Recently closed**: when a session goes away it shows up here (kept 7 days) with **Reopen** (in the app) or **Terminal** (in Windows Terminal), both running `claude --resume <id>` in the same folder.

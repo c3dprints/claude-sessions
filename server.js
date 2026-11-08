@@ -20,6 +20,7 @@ const startup = require('./lib/startup');
 const library = require('./lib/library');
 const usage = require('./lib/usage');
 const { Store, projectOf, inside } = require('./lib/store');
+const paths = require('./lib/paths');
 const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
@@ -1155,6 +1156,22 @@ const routes = {
   },
 
   // ---- wiki, skills, context, plan usage
+  // File and folder paths in a line of terminal text, so they can be clicked (PC only).
+  'POST /api/paths/find': (b) => {
+    const cwd = typeof b.cwd === 'string' && path.isAbsolute(b.cwd) ? b.cwd : null;
+    return { links: paths.findPaths(typeof b.line === 'string' ? b.line : '', cwd) };
+  },
+
+  // Opens a path's folder in Explorer (Finder on a Mac), the file picked out (PC only).
+  'POST /api/paths/open': (b) => {
+    const cwd = typeof b.cwd === 'string' && path.isAbsolute(b.cwd) ? b.cwd : null;
+    const full = typeof b.path === 'string' && b.path.length < 1000 ? paths.resolve(b.path, cwd) : null;
+    if (!full || !fs.existsSync(full)) throw fail(404, 'that file or folder is not there');
+    if (TEST_MODE) return { ok: true, test: true, path: full };
+    paths.reveal(full);
+    return { ok: true, path: full };
+  },
+
   // The folders inside one a new chat may start in, for the project page's folder picker.
   'GET /api/folders': (b, url) => {
     const dir = url.searchParams.get('dir') || '';
@@ -1494,6 +1511,8 @@ async function handle(req, res, isRemote = false) {
       return send(res, 403, { error: 'phone access is managed on the PC' });
     } else if (url.pathname.startsWith('/api/team/')) {
       return send(res, 403, { error: 'only sessions on this PC use this' });
+    } else if (url.pathname.startsWith('/api/paths/')) {
+      return send(res, 403, { error: 'folders open on the PC only' });
     } else if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/ping')) {
       // Renew the year and move older Strict cookies to Lax.
       setDeviceCookie(res, remoteLib.cookieToken(req.headers.cookie));

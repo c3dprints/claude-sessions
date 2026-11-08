@@ -368,6 +368,7 @@
   .phead .newin .pop button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
   .phead .newin .pop button:hover { background: var(--surface-2); }
   .phead .newin .pop .hint { color: var(--muted); font-size: 12px; padding: 6px 8px 2px; }
+  .can-open .path[title]:hover, .can-open #tPath[title]:hover { text-decoration: underline; cursor: pointer; }
   .phead .newin .pop .go { font-weight: 600; color: var(--accent, var(--text)); }
   .term-pane .xterm { height: 100%; }
   .ended-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: color-mix(in srgb, var(--closed) 14%, var(--surface)); border-top: 1px solid var(--border); }
@@ -1075,6 +1076,60 @@ function b64bytes(b64) {
   return out;
 }
 
+// Opens a file's folder (the file picked out) or a folder, on this computer.
+async function openPath(p, cwd) {
+  try {
+    const r = await api('/api/paths/open', { path: p, cwd: cwd || null });
+    toast(`Opened ${home(r.path)}`);
+  } catch (e) { toast(e.message, true); }
+}
+
+// Paths Claude prints become links that open their folder. The server says which text
+// is a path that exists; a line wrapped over several rows is asked about as one line.
+const pathCache = new Map(); // cwd + line -> [{ start, len }]
+function pathLinks(term, id) {
+  return {
+    provideLinks(y, done) {
+      const buf = term.buffer.active;
+      let top = y - 1;
+      while (top > 0 && buf.getLine(top) && buf.getLine(top).isWrapped) top--;
+      const rows = [];
+      let text = '';
+      for (let r = top; r < buf.length; r++) {
+        const l = buf.getLine(r);
+        if (!l || (r > top && !l.isWrapped)) break;
+        const next = buf.getLine(r + 1);
+        rows.push({ r, at: text.length });
+        text += l.translateToString(!(next && next.isWrapped));
+      }
+      if (!/[\\/.]/.test(text)) return done(undefined);
+      const t = S && S.terminals.list.find((x) => x.id === id);
+      const cwd = (t && t.cwd) || null;
+      const at = (off) => {
+        let row = rows[0];
+        for (const x of rows) if (x.at <= off) row = x;
+        return { x: off - row.at + 1, y: row.r + 1 };
+      };
+      const make = (found) => done(found.length ? found.map((f) => {
+        const p = text.substr(f.start, f.len);
+        return {
+          range: { start: at(f.start), end: at(f.start + f.len - 1) },
+          text: p,
+          decorations: { pointerCursor: true, underline: true },
+          activate: () => openPath(p, cwd),
+        };
+      }) : undefined);
+      const key = cwd + '\n' + text;
+      if (pathCache.has(key)) return make(pathCache.get(key));
+      api('/api/paths/find', { line: text, cwd }).then((r) => {
+        if (pathCache.size > 500) pathCache.clear();
+        pathCache.set(key, r.links);
+        make(r.links);
+      }).catch(() => done(undefined));
+    },
+  };
+}
+
 function getTerm(id) {
   let t = terms.get(id);
   if (t) return t;
@@ -1091,6 +1146,7 @@ function getTerm(id) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(el);
+  if (!ON_PHONE) term.registerLinkProvider(pathLinks(term, id));
   touchScroll(term, el, id);
   term.onData((d) => sendInput(id, d));
   term.attachCustomKeyEventHandler((e) => {
@@ -1330,6 +1386,7 @@ function renderTermBar() {
   $('#tStatus').html = `<span class="dot"></span>${st.text}`;
   $('#tTitle').textContent = known ? label(known) : (t && t.resumeId ? 'Reopening session…' : 'New session');
   $('#tPath').textContent = home((t && t.cwd) || (known && known.cwd));
+  $('#tPath').title = (t && t.cwd) || (known && known.cwd) || '';
   $('#tProj').html = s ? pchip(s) : '';
   $('#tCtx').html = s ? ctxBadge(s) : '';
   $('#tEnd').html = t && !t.exited
@@ -1881,6 +1938,7 @@ function openSettings() {
 // ---- phone access ------------------------------------------------------------------
 // Opened from a tailnet address, this page is the phone: it never sees the pairing controls.
 const ON_PHONE = !['127.0.0.1', 'localhost'].includes(location.hostname);
+if (!ON_PHONE) document.body.classList.add('can-open');
 let R = null;
 let remoteTimer = null;
 let httpsHelp = null;  // where to switch on HTTPS certificates, after a setup that could not finish
@@ -2248,7 +2306,7 @@ function renderGroup() {
     if (narrow) {
       box.className = `card ${st.cls}`;
       box.html = `<div class="row"><span class="status"><span class="dot"></span>${st.text}</span></div>
-        <div class="title">${esc(m.role)}</div><div class="meta"><span>${esc(m.title || 'New session')}</span><span class="path">${esc(home(m.cwd))}</span></div>
+        <div class="title">${esc(m.role)}</div><div class="meta"><span>${esc(m.title || 'New session')}</span><span class="path" title="${esc(m.cwd || '')}">${esc(home(m.cwd))}</span></div>
         <div class="actions">${m.running ? `<button class="btn primary" data-act="open" data-tid="${esc(m.tid)}">Open</button>` : m.sid ? `<button class="btn primary" data-act="resume" data-id="${esc(m.sid)}">Reopen</button>` : ''}${pass}${connect}</div>`;
       continue;
     }
@@ -2674,7 +2732,7 @@ function renderContext() {
       <span class="ln">${c.compactAt && c.compactAt < c.size ? `Your settings compact the conversation at ${ktok(c.compactAt)} (the outlined square)` : 'Claude Code compacts the conversation before this runs out'}</span></div>`;
   const facts = [esc(c.model || 'Model unknown'), c.sizeKnown ? '' : 'window size guessed', `last reply ${ago(c.at)}`,
     c.compactions ? `compacted ${c.compactions}×` : '', c.cost != null ? `$${c.cost.toFixed(2)} at API prices` : '',
-    c.cwd ? `<span class="path">${esc(home(c.cwd))}</span>` : ''].filter(Boolean).join(' · ');
+    c.cwd ? `<span class="path" title="${esc(c.cwd)}">${esc(home(c.cwd))}</span>` : ''].filter(Boolean).join(' · ');
   $('#ctxDetail').html = `<div class="ctx-main">
     <div><div class="ctx-total"><b>${ktok(c.used)}</b> of ${ktok(c.size)} tokens · ${c.pct.toFixed(1)}%</div><div class="cells">${cells}</div>
       <p class="fine" style="font-size:12px;margin:10px 0 0">Each square is ${ktok(per)} tokens.</p></div>
@@ -2792,7 +2850,7 @@ function renderWikiDoc() {
   // The page title is shown in the header, so a leading "# Title" line is not repeated.
   $('#wikiDoc').html = `<div class="doc-head"><h1>${esc(p.title)}</h1>
       ${p.description ? `<p class="doc-desc">${esc(p.description)}</p>` : ''}
-      <div class="doc-meta"><span>${esc(p.group.label)}</span><span title="${esc(new Date(p.mtime).toLocaleString())}">updated ${ago(p.mtime)}</span><span class="path">${esc(p.file)}</span></div></div>
+      <div class="doc-meta"><span>${esc(p.group.label)}</span><span title="${esc(new Date(p.mtime).toLocaleString())}">updated ${ago(p.mtime)}</span><span class="path" title="${esc(p.file)}">${esc(p.file)}</span></div></div>
     ${p.truncated ? '<div class="banner info"><div class="msg">This page is long; only its first 256 KB are shown.</div></div>' : ''}
     <div class="md">${md(p.text.replace(/^\s*#\s+.+\n?/, ''), q.length > 1 ? q : '')}</div>`;
 }
@@ -2885,6 +2943,14 @@ function saveRename(inp) {
 }
 
 document.addEventListener('click', async (e) => {
+  // A session's folder, wherever it is shown, opens in Explorer (on the PC).
+  const fp = !ON_PHONE && e.target.closest('.path[title], #tPath[title]');
+  if (fp && fp.title) {
+    e.preventDefault();
+    e.stopPropagation();
+    openPath(fp.title);
+    return;
+  }
   const b = e.target.closest('[data-act]');
   if (!e.target.closest('#pmenu') && !(b && b.dataset.act === 'pmenu')) closePmenu();
   if (!b) return;
