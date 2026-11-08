@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.23 (2026-11-08)
+
+- **Pasting screenshots works in more cases**: Ctrl+V with a screenshot on the clipboard now reaches the session on screen even when the terminal does not have the focus (after clicking the sidebar, say). When the browser is handed neither a picture nor text, which happens with some screenshot tools' clipboard formats, the app reads the PC's clipboard itself (PowerShell on Windows, AppleScript on a Mac) and adds the picture; image files copied in Explorer are added the same way. Reading the PC's clipboard is not offered over phone access.
+
 ## 1.5.22 (2026-11-08)
 
 - **Click a file location to open it**: paths Claude prints in a built-in terminal (full ones like `C:\...` or `~\...`, spaces and all, and ones relative to the session's folder like `lib/x.js`) are underlined on hover; clicking one opens its folder in Explorer (Finder on a Mac) with the file picked out, or opens the folder itself. Only paths that exist on this computer become links. A session's folder on its card, in History, in a group pane and in the terminal's top bar opens the same way. On a phone this is off, since it opens on the PC.

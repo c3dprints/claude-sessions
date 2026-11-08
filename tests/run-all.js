@@ -21,6 +21,7 @@ const { HostClient } = require('../lib/hostclient');
 const teams = require('../lib/teams');
 const trustprompt = require('../lib/trustprompt');
 const pathsLib = require('../lib/paths');
+const clipboardLib = require('../lib/clipboard');
 
 const WIN = process.platform === 'win32';
 // Harmless stand-ins for claude that print a marker, then wait for typing.
@@ -204,6 +205,13 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     assert.deepStrictEqual(found('lib/x.js', null), [], 'relative paths need the folder the terminal is in');
     assert.strictEqual(pathsLib.resolve('~/x', null), path.join(os.homedir(), 'x'));
     fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  await check('clipboard: a picture, or image files copied in Explorer (other files left out)', () => {
+    assert.deepStrictEqual(clipboardLib.parse('IMAGE\r\n'), { image: true });
+    assert.deepStrictEqual(clipboardLib.parse('FILE C:\\a b\\shot.PNG\r\nFILE C:\\notes.txt\r\nFILE C:\\x.jpeg\r\n'), { files: ['C:\\a b\\shot.PNG', 'C:\\x.jpeg'] });
+    assert.deepStrictEqual(clipboardLib.parse('FILE C:\\notes.txt'), {});
+    assert.deepStrictEqual(clipboardLib.parse(null), {});
   });
 
   await check('trust question: the pointer is moved to Yes, then Enter', () => {
@@ -551,7 +559,7 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
   const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     env: {
       ...process.env, CS_PORT: String(PORT), CS_CLAUDE_DIR: fx.dir, CS_DATA: data, CS_FAKE_PIDS: '100,200', CS_TEST: '1',
-      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), CS_TEAM_RUN_LIMIT: '1', CS_TEAM_COOLDOWN: '0', ...(WIN ? { CS_REMOTE_IP: REMOTE_IP, CS_REMOTE_DNS: SERVE_NAME } : {}),
+      CS_HOST_PIPE: httpPipe, CS_CLAUDE_CMD: shellCmd('APP-READY'), CS_TEAM_RUN_LIMIT: '1', CS_TEAM_COOLDOWN: '0', CS_TEST_CLIPBOARD: path.join(fx.dir, 'clip.png'), ...(WIN ? { CS_REMOTE_IP: REMOTE_IP, CS_REMOTE_DNS: SERVE_NAME } : {}),
     },
     stdio: 'ignore', windowsHide: true,
   });
@@ -1047,6 +1055,12 @@ process.stdin.on('data', (d) => {
         const bad = await request(PORT, 'POST', '/api/term/image', { body: { id: tid, data: Buffer.from('<svg/>').toString('base64') }, headers: H });
         assert.strictEqual(bad.status, 400, 'not an image by its bytes');
         assert.strictEqual((await request(PORT, 'POST', '/api/term/image', { body: { id: 'nope', data: png.toString('base64') }, headers: H })).status, 404);
+        // A screenshot the browser could not read: the server takes it from the clipboard.
+        fs.writeFileSync(path.join(fx.dir, 'clip.png'), png);
+        const clip = await request(PORT, 'POST', '/api/term/clipboard-image', { body: { id: tid }, headers: H });
+        assert.strictEqual(clip.status, 200, JSON.stringify(clip.json));
+        assert.ok(fs.readFileSync(clip.json.paths[0]).equals(png));
+        assert.strictEqual((await request(PORT, 'POST', '/api/term/clipboard-image', { body: { id: 'nope' }, headers: H })).status, 404);
       } finally {
         fs.rmSync(regFile, { force: true });
         await request(PORT, 'POST', '/api/term/kill', { body: { id: tid }, headers: H });

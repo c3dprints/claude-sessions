@@ -1173,15 +1173,7 @@ function getTerm(id) {
   });
   // An image on the clipboard, or image files dropped on the terminal, go to the
   // server, which pastes their saved path into the prompt (works from a phone too).
-  el.addEventListener('paste', (e) => {
-    const cd = e.clipboardData;
-    const files = cd ? [...cd.files] : [];
-    if (files.length && !cd.getData('text')) {
-      e.preventDefault();
-      e.stopPropagation();
-      uploadImages(id, files);
-    }
-  }, true);
+  el.addEventListener('paste', (e) => pasteImage(id, e), true);
   el.addEventListener('dragover', (e) => {
     if (![...e.dataTransfer.types].includes('Files')) return;
     e.preventDefault();
@@ -1262,6 +1254,40 @@ async function uploadImages(id, files) {
   const t = terms.get(id);
   if (t) t.term.focus();
 }
+// A screenshot pasted into a session. Image files go up from the browser. When the browser
+// sees neither a picture nor text (a screenshot tool's format it cannot read), the PC
+// reads its own clipboard; that also takes image files copied in Explorer.
+function pasteImage(id, e) {
+  const cd = e.clipboardData;
+  if (!cd) return;
+  const files = [...cd.files];
+  const text = cd.getData('text');
+  if (files.length && (!text || files.some((f) => f.name && text.includes(f.name)))) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadImages(id, files);
+  } else if (!files.length && !text && !ON_PHONE) {
+    e.preventDefault();
+    e.stopPropagation();
+    clipImage(id);
+  }
+}
+async function clipImage(id) {
+  toast('Adding image…');
+  try {
+    const r = await api('/api/term/clipboard-image', { id });
+    toast(r.paths.length > 1 ? `${r.paths.length} images added to the prompt` : 'Image added to the prompt');
+  } catch (e) { toast(e.message, true); }
+  const t = terms.get(id);
+  if (t) t.term.focus();
+}
+// Ctrl+V outside a text box (after clicking the sidebar, say) still reaches the session on screen.
+document.addEventListener('paste', (e) => {
+  if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], .term-pane')) return;
+  const id = view === 'term' ? current : view === 'group' ? lastFocus : null;
+  if (id && terms.has(id)) pasteImage(id, e);
+});
+
 let imgFor = null; // terminal the file picker adds images to
 document.addEventListener('change', (e) => {
   if (e.target.id !== 'imgFile') return;

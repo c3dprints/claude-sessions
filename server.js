@@ -21,6 +21,7 @@ const library = require('./lib/library');
 const usage = require('./lib/usage');
 const { Store, projectOf, inside } = require('./lib/store');
 const paths = require('./lib/paths');
+const clipboard = require('./lib/clipboard');
 const { HostClient } = require('./lib/hostclient');
 const platform = require('./lib/platform');
 const remoteLib = require('./lib/remote');
@@ -625,6 +626,22 @@ function openStream(req, res) {
   else host.ensure().catch((e) => sse(res, { t: 'host', up: false, error: e.message }));
 }
 
+function newImageFile(ext) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  return path.join(IMAGE_DIR, `${stamp}-${crypto.randomBytes(3).toString('hex')}.${ext}`);
+}
+
+// Types image paths into the prompt, where Claude Code attaches them as images.
+async function pasteFiles(t, files) {
+  const text = files.map((f) => (/\s/.test(f) ? `"${f}"` : f)).join(' ') + ' ';
+  // Sessions outlive a server restart, which forgets their paste mode. Without the
+  // brackets Claude Code shows the path as text instead of attaching the image, and
+  // a long session's replay may no longer hold the mode, so only a known "off" skips them.
+  if (!bracketed.has(t.id)) await learnPasteMode(t.id);
+  await host.request({ t: 'input', id: t.id, data: bracketed.get(t.id) === false ? text : `\x1b[200~${text}\x1b[201~` });
+  pausedTerms.delete(t.id);
+}
+
 function termOf(id) {
   const t = host.list().find((x) => x.id === id);
   if (!t) throw fail(404, 'no such terminal');
@@ -873,18 +890,34 @@ const routes = {
     if (!ext) throw fail(400, 'only PNG, JPEG, GIF and WebP images can be added');
     if (buf.length > MAX_IMAGE) throw fail(413, `images up to ${MAX_IMAGE / 1048576} MB`);
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-    const file = path.join(IMAGE_DIR, `${stamp}-${crypto.randomBytes(3).toString('hex')}.${ext}`);
+    const file = newImageFile(ext);
     fs.writeFileSync(file, buf);
-    const text = (/\s/.test(file) ? `"${file}"` : file) + ' ';
-    // Sessions outlive a server restart, which forgets their paste mode. Without the
-    // brackets Claude Code shows the path as text instead of attaching the image, and
-    // a long session's replay may no longer hold the mode, so only a known "off" skips them.
-    if (!bracketed.has(t.id)) await learnPasteMode(t.id);
-    await host.request({ t: 'input', id: t.id, data: bracketed.get(t.id) === false ? text : `\x1b[200~${text}\x1b[201~` });
-    pausedTerms.delete(t.id);
+    await pasteFiles(t, [file]);
     log(`image ${path.basename(file)} (${buf.length} bytes) added to terminal ${t.id}`);
     return { ok: true, path: file };
+  },
+
+  // A screenshot the browser could not hand over: the server reads the clipboard (PC only).
+  'POST /api/term/clipboard-image': async (b) => {
+    const t = termOf(b.id);
+    if (t.exited) throw fail(409, 'that session has ended');
+    fs.mkdirSync(IMAGE_DIR, { recursive: true });
+    const file = newImageFile('png');
+    const got = TEST_MODE && process.env.CS_TEST_CLIPBOARD
+      ? (fs.copyFileSync(process.env.CS_TEST_CLIPBOARD, file), { image: true })
+      : await clipboard.readImage(file);
+    let files = [];
+    if (got.image && fs.existsSync(file)) {
+      const st = fs.statSync(file);
+      if (st.size > MAX_IMAGE) { fs.unlinkSync(file); throw fail(413, `images up to ${MAX_IMAGE / 1048576} MB`); }
+      files = [file];
+    } else if (got.files) {
+      files = got.files.filter((f) => fs.existsSync(f));
+    }
+    if (!files.length) throw fail(404, 'there is no picture on the clipboard');
+    await pasteFiles(t, files);
+    log(`clipboard: ${files.length} image(s) added to terminal ${t.id}`);
+    return { ok: true, paths: files };
   },
 
   // ---- groups
@@ -1511,7 +1544,7 @@ async function handle(req, res, isRemote = false) {
       return send(res, 403, { error: 'phone access is managed on the PC' });
     } else if (url.pathname.startsWith('/api/team/')) {
       return send(res, 403, { error: 'only sessions on this PC use this' });
-    } else if (url.pathname.startsWith('/api/paths/')) {
+    } else if (url.pathname.startsWith('/api/paths/') || url.pathname === '/api/term/clipboard-image') {
       return send(res, 403, { error: 'folders open on the PC only' });
     } else if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/ping')) {
       // Renew the year and move older Strict cookies to Lax.
