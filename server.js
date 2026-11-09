@@ -652,6 +652,7 @@ function termOf(id) {
 
 let updateBusy = false;
 let lastWindowIcon = 0;
+let lastDashboardAt = 0; // last time a dashboard on this PC asked for /api/state
 
 // The saved result predates any restart, so "available" is re-judged against the running version.
 function updateStatus() {
@@ -672,8 +673,15 @@ async function checkForUpdate() {
   } finally {
     updateBusy = false;
   }
+  const u = store.state.update;
+  if (u.available) {
+    try { u.notes = await updater.notes(APP_DIR, pkg.version, u.latest); } catch { u.notes = []; }
+  }
   store.save();
-  if (store.state.update.available && store.state.settings.autoUpdate && store.state.update.mode === 'release') {
+  // With the dashboard open the page asks first (What's changed, then OK); the
+  // automatic install is for when nobody is looking.
+  const watched = Date.now() - lastDashboardAt < 20000;
+  if (u.available && store.state.settings.autoUpdate && u.mode === 'release' && !watched) {
     installUpdate(store.state.update.latest).catch((e) => log(`auto update failed: ${e.message}`));
   }
   return store.state.update;
@@ -1272,6 +1280,13 @@ const routes = {
 
   'POST /api/update/check': () => checkForUpdate(),
 
+  // What changed since `from` in the running version, for the window shown after an update.
+  'GET /api/update/notes': async (_b, url) => {
+    const from = String(url.searchParams.get('from') || '');
+    if (!updater.parseVersion(from)) throw fail(400, 'bad version');
+    return { current: pkg.version, notes: await updater.notes(APP_DIR, from, null).then((n) => n.filter((x) => updater.compare(x.version, pkg.version) <= 0)) };
+  },
+
   // The page asks on every load: Edge puts its own taskbar app ID back on a reload,
   // which drops the window under a plain browser icon.
   'POST /api/window-icon': () => {
@@ -1551,6 +1566,8 @@ async function handle(req, res, isRemote = false) {
       setDeviceCookie(res, remoteLib.cookieToken(req.headers.cookie));
     }
   }
+
+  if (!isRemote && req.method === 'GET' && url.pathname === '/api/state') lastDashboardAt = Date.now();
 
   if (req.method === 'GET' && STATIC[url.pathname]) {
     const [file, type] = STATIC[url.pathname];

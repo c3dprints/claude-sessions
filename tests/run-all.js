@@ -358,6 +358,20 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
     assert.strictEqual(updater.latestTag([]), null);
   });
 
+  await check('updater: release notes are the CHANGELOG sections after the running version', () => {
+    const text = [
+      '# Changelog', '', '## 1.5.25 (2026-11-10)', '', '- c', '',
+      '## 1.5.24 (2026-11-09)', '', '- **b** fix', '- b2', '',
+      '## 1.5.23 (2026-11-08)', '', '- a', '',
+    ].join('\r\n');
+    const n = updater.parseNotes(text, '1.5.23', 'v1.5.24');
+    assert.deepStrictEqual(n.map((x) => x.version), ['1.5.24']);
+    assert.strictEqual(n[0].date, '2026-11-09');
+    assert.strictEqual(n[0].body, '- **b** fix\n- b2');
+    assert.deepStrictEqual(updater.parseNotes(text, '1.5.22', null).map((x) => x.version), ['1.5.25', '1.5.24', '1.5.23']);
+    assert.deepStrictEqual(updater.parseNotes(text, '1.5.25', null), []);
+  });
+
   await check('updater: install refuses a bad tag', async () => {
     await assert.rejects(updater.install(ROOT, 'v1; evil'), /bad tag/);
   });
@@ -590,6 +604,16 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(r.json.update.current, require('../package.json').version);
       const inst = await request(PORT, 'POST', '/api/update/install', { body: {}, headers: H });
       assert.strictEqual(inst.status, 400);
+    });
+
+    await check('http: what changed since an older version comes from the local CHANGELOG', async () => {
+      const v = require('../package.json').version;
+      const r = await request(PORT, 'GET', '/api/update/notes?from=0.0.1');
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(r.json.notes[0].version, v);
+      assert.ok(r.json.notes[0].body.length > 10);
+      assert.strictEqual((await request(PORT, 'GET', '/api/update/notes?from=' + v)).json.notes.length, 0);
+      assert.strictEqual((await request(PORT, 'GET', '/api/update/notes?from=junk')).status, 400);
     });
 
     await check('http: page is served', async () => {

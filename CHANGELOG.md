@@ -2,6 +2,11 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.24 (2026-11-08)
+
+- **Update window**: when a new version is ready the app opens a window titled **Update ready** that lists what changed in it (its CHANGELOG entries, every version since yours). Click **OK, install** to install it: a progress bar follows the install and the restart, and the page reloads by itself once the new version answers. **Later** asks again after 6 hours; the dot on the update icon opens the window any time. If the install does not finish, the window says why and offers **Try again**.
+- With **Install updates by themselves** on, the app no longer installs while a window is open; it asks first. An update installed while the app was closed shows its notes the next time you open it.
+
 ## 1.5.23 (2026-11-08)
 
 - **Pasting screenshots works in more cases**: Ctrl+V with a screenshot on the clipboard now reaches the session on screen even when the terminal does not have the focus (after clicking the sidebar, say). When the browser is handed neither a picture nor text, which happens with some screenshot tools' clipboard formats, the app reads the PC's clipboard itself (PowerShell on Windows, AppleScript on a Mac) and adds the picture; image files copied in Explorer are added the same way. Reading the PC's clipboard is not offered over phone access.

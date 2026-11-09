@@ -129,7 +129,7 @@ On Windows the dashboard opens as an app window in Chrome, Edge, Brave or Chromi
 
 ## Updates
 
-The installed copy is a git clone sitting on a release tag. Every 6 hours (and on the update icon or **Check now** in Settings) it fetches tags from GitHub; if a newer `vX.Y.Z` exists Settings shows **Install and restart**, or it installs by itself when **Install updates automatically** is on. Only the dashboard restarts; sessions in the app keep running. A copy on a branch (the dev checkout) never moves itself.
+The installed copy is a git clone sitting on a release tag. Every 6 hours (and on the update icon or **Check now** in Settings) it fetches tags from GitHub; if a newer `vX.Y.Z` exists the app opens an **Update ready** window listing what changed (the new version's CHANGELOG entries). **OK, install** installs it with a progress bar and reloads the page once the new version answers; **Later** waits 6 hours before asking again (the dot on the update icon reopens it sooner). With **Install updates by themselves while the app is closed** on, an update found while no window is open installs on its own, and the next time the app opens it shows what changed. Only the dashboard restarts; sessions in the app keep running. A copy on a branch (the dev checkout) never moves itself.
 
 ## Releasing
 
