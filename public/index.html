@@ -317,6 +317,8 @@
   #setDlg { width: min(680px, 94vw); }
   #setDlg .dlg { max-height: 88vh; overflow-y: auto; }
   .set-sec { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .share-msg { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.5; max-height: 220px; overflow: auto; user-select: text; }
+  .share-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .set-sec h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .set-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .set-row .lbl { min-width: 110px; }
@@ -736,6 +738,17 @@
       <p class="note">Only devices on your Tailscale network can reach it, and each one has to be paired here once with a code. Nothing is opened to your home network or the internet. Your phone needs the Tailscale app, signed in to the same account.</p>
     </section>
 
+    <section class="set-sec" id="shareSec">
+      <h4>Share this app</h4>
+      <pre class="share-msg" id="shareMsg"></pre>
+      <div class="share-btns">
+        <button type="button" class="btn primary" data-act="share-copy">Copy message</button>
+        <button type="button" class="btn" data-act="share-link">Copy link</button>
+        <button type="button" class="btn" data-act="share-send" id="shareSend" hidden>Share…</button>
+      </div>
+      <p class="note">Copies as plain text, so it pastes cleanly into a text, email or chat. The links always point to the newest version. Whoever installs it runs their own copy with their own Claude Code; nothing connects to this computer.</p>
+    </section>
+
     <section class="set-sec">
       <h4>New chats</h4>
       <label class="switch"><input type="checkbox" id="optTrust"> Trust the folder by itself</label>
@@ -844,6 +857,55 @@ async function api(path, body) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
+}
+
+// Plain text only (text/plain), so a paste picks up no fonts, colors or Markdown.
+// The textarea fallback covers pages where the clipboard API is off (phone over http).
+function copyPlain(text, okMsg) {
+  const done = () => { if (okMsg) toast(okMsg); };
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* blocked */ }
+    ta.remove();
+    if (ok) done(); else toast('Copy failed', true);
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+
+// Terminal selections: drop the padding spaces at line ends and the indent every
+// line shares (Claude indents its answers), keep the rest as it is.
+function cleanCopy(text) {
+  const lines = String(text).replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/[ \t\u00a0]+$/, ''));
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  while (lines.length && !lines[0]) lines.shift();
+  const indents = lines.filter((l) => l).map((l) => /^ */.exec(l)[0].length);
+  const cut = indents.length ? Math.min(...indents) : 0;
+  return lines.map((l) => l.slice(cut)).join('\n');
+}
+
+const REPO_URL = 'https://github.com/c3dprints/claude-sessions';
+function shareText() {
+  const dl = REPO_URL + '/releases/latest/download/';
+  return [
+    'Claude Sessions: a free app that shows all your Claude Code sessions in one place, runs them in built-in terminals and reopens ones that got closed. You need Claude Code installed first.',
+    '',
+    'Windows: download this and double-click it.',
+    dl + 'ClaudeSessionsSetup.exe',
+    'If Windows says "Windows protected your PC", click More info, then Run anyway.',
+    '',
+    'Mac: download this, open the zip and double-click Install Claude Sessions.command.',
+    dl + 'ClaudeSessionsSetup-mac.zip',
+    'If macOS blocks it, open System Settings, Privacy & Security, and click Open Anyway.',
+    '',
+    'More about it: ' + REPO_URL,
+  ].join('\n');
 }
 
 let toastTimer;
@@ -1182,7 +1244,7 @@ function getTerm(id) {
     // macOS: Cmd+C copies, Cmd+V pastes through the browser, Ctrl+C always reaches Claude.
     if (MAC) {
       if (e.metaKey && k === 'c') {
-        if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+        if (term.hasSelection()) copyPlain(cleanCopy(term.getSelection()));
         return false;
       }
       if (e.metaKey && k === 'v') return false;
@@ -1190,7 +1252,7 @@ function getTerm(id) {
     }
     // Ctrl+C copies when text is selected, otherwise it goes to Claude as usual.
     if (e.ctrlKey && k === 'c' && (e.shiftKey || term.hasSelection())) {
-      if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+      if (term.hasSelection()) copyPlain(cleanCopy(term.getSelection()));
       term.clearSelection();
       return false;
     }
@@ -1982,6 +2044,8 @@ function renderSettings() {
 }
 
 function openSettings() {
+  $('#shareMsg').textContent = shareText();
+  $('#shareSend').hidden = typeof navigator.share !== 'function';
   renderUpdates();
   renderSettings();
   if (!$('#setDlg').open) $('#setDlg').showModal();
@@ -3170,8 +3234,11 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'remote-forget': await remoteCall('/api/remote/forget', { id: b.dataset.v }, 'Removed; it needs a new code to come back'); break;
-    case 'copy':
-      navigator.clipboard.writeText(b.dataset.v).then(() => toast('Copied'), () => toast('Copy failed', true));
+    case 'copy': copyPlain(b.dataset.v, 'Copied'); break;
+    case 'share-copy': copyPlain(shareText(), 'Message copied; paste it to a friend'); break;
+    case 'share-link': copyPlain(REPO_URL, 'Link copied'); break;
+    case 'share-send':
+      try { await navigator.share({ title: 'Claude Sessions', text: shareText() }); } catch (e) { if (e && e.name !== 'AbortError') copyPlain(shareText(), 'Sharing is not available here, so the message was copied'); }
       break;
     case 'go': go(b.dataset.view, b.dataset.arg); break;
     case 'open': show(b.dataset.tid); break;

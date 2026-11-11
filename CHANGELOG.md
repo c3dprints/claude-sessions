@@ -2,6 +2,11 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.25 (2026-11-11)
+
+- **Share this app** in Settings: a ready-to-send message with the Windows and Mac download links and the GitHub page. **Copy message** and **Copy link** copy plain text only, so it pastes cleanly into a text, email or chat; **Share…** opens the system share sheet where the browser has one.
+- **Cleaner copies from a terminal**: copying a selection drops the padding spaces at line ends and the indent every line shares (Claude indents its answers), so pasted text is not full of trailing blanks.
+
 ## 1.5.24 (2026-11-08)
 
 - **Update window**: when a new version is ready the app opens a window titled **Update ready** that lists what changed in it (its CHANGELOG entries, every version since yours). Click **OK, install** to install it: a progress bar follows the install and the restart, and the page reloads by itself once the new version answers. **Later** asks again after 6 hours; the dot on the update icon opens the window any time. If the install does not finish, the window says why and offers **Try again**.
