@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.26 (2026-11-11)
+
+- **Fold the sidebar into icons**: the button at the bottom of the sidebar (next to Settings) shrinks it to a narrow rail so terminals and chats get the width. The views keep their icons; sessions, projects and groups show as letter badges (a session's ring is its status color, a project or group's is its color), and hovering one shows its name and state. **+** still starts a new session. The same button unfolds it, and the app remembers the choice. Phones keep the slide-out list.
+
 ## 1.5.25 (2026-11-11)
 
 - **Share this app** in Settings: a ready-to-send message with the Windows and Mac download links and the GitHub page. **Copy message** and **Copy link** copy plain text only, so it pastes cleanly into a text, email or chat; **Share…** opens the system share sheet where the browser has one.

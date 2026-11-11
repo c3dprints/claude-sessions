@@ -138,6 +138,33 @@
   .nav-item.view .nt { font-weight: 500; flex: 1; }
   .nav-item.view .num { flex: none; color: var(--faint); font-size: 12px; }
   .nav-row { display: flex; align-items: center; }
+  .nav-item .mono, .side-fold .fold-in { display: none; }
+  .side-fold { color: var(--faint); }
+  .layout { transition: grid-template-columns .15s ease; }
+  @media (min-width: 761px) {
+    body.side-mini .layout { grid-template-columns: 58px 1fr; }
+    body.side-mini .side-scroll { padding: 8px 6px 12px; overflow-x: hidden; }
+    body.side-mini .nav-row { flex-direction: column; gap: 2px; }
+    body.side-mini .nav-item { justify-content: center; align-items: center; gap: 0; padding: 7px 0; }
+    body.side-mini .nav-item .nt, body.side-mini .nav-item .ns, body.side-mini .nav-item .num,
+    body.side-mini .nav-item .pbar, body.side-mini .nav-item .dot, body.side-mini .nav-item .pdot, body.side-mini .nav-item .gico { display: none; }
+    body.side-mini .nav-item > span:last-child { flex: none; }
+    body.side-mini .nav-item.view .ico { width: auto; font-size: 16px; }
+    body.side-mini .nav-item .mono { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12.5px; font-weight: 700; color: var(--text); background: var(--surface-2); border: 2px solid var(--st, var(--border)); flex: none; }
+    body.side-mini .nav-item.busy .mono { animation: pulse 1.4s ease-in-out infinite; }
+    body.side-mini .nav-item .mono.sq { border-radius: 8px; }
+    body.side-mini .side-h { font-size: 0; padding: 10px 0 4px; margin: 6px 4px 0; border-top: 1px solid var(--border); justify-content: center; }
+    body.side-mini .side-h .btn { margin: 0; font-size: 14px; }
+    body.side-mini .side-empty, body.side-mini .side-hint, body.side-mini #sideWt .nav-row > .btn, body.side-mini .side-foot .ver { display: none; }
+    body.side-mini .side-new { padding: 8px 6px 4px; }
+    body.side-mini .side-new > summary { font-size: 0; padding: 6px 0; }
+    body.side-mini .side-new > summary::after { content: '+'; font-size: 18px; line-height: 1; }
+    body.side-mini .side-new .menu-pop { left: 6px; }
+    body.side-mini .side-foot { flex-direction: column; padding: 6px; gap: 2px; }
+    body.side-mini .side-fold .fold-in { display: inline; }
+    body.side-mini .side-fold .fold-out { display: none; }
+  }
+  @media (max-width: 760px) { .side-fold { display: none !important; } }
   .nav-row .nav-item { flex: 1; min-width: 0; }
   .pbar { width: 3px; align-self: stretch; border-radius: 2px; flex: none; margin: 2px -4px 2px -6px; }
   .pdot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
@@ -517,12 +544,12 @@
   <nav class="side" aria-label="Sessions">
    <div class="side-scroll">
     <div class="nav-row">
-      <button class="nav-item view" data-act="go" data-view="overview" id="navOverview"><span class="ico">▤</span><span class="nt">All sessions</span></button>
+      <button class="nav-item view" data-act="go" data-view="overview" id="navOverview" title="All sessions"><span class="ico">▤</span><span class="nt">All sessions</span></button>
       <button class="icon-btn" data-act="upd-icon" id="updIcon" title="Check for updates"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97"/><path d="M13.6 2.2v3.1h-3.1"/></svg></button>
     </div>
-    <button class="nav-item view" data-act="go" data-view="context" id="navContext"><span class="ico">◔</span><span class="nt">Context and usage</span></button>
-    <button class="nav-item view" data-act="go" data-view="skills" id="navSkills"><span class="ico">✦</span><span class="nt">Skills</span><span class="num" id="skillsNum"></span></button>
-    <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
+    <button class="nav-item view" data-act="go" data-view="context" id="navContext" title="Context and usage"><span class="ico">◔</span><span class="nt">Context and usage</span></button>
+    <button class="nav-item view" data-act="go" data-view="skills" id="navSkills" title="Skills"><span class="ico">✦</span><span class="nt">Skills</span><span class="num" id="skillsNum"></span></button>
+    <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki" title="Wiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
     <div class="side-h">Projects <button class="btn ghost" data-act="proj-new" title="New project">+</button></div>
     <div id="sideProjects"></div>
     <div class="side-h">Groups <button class="btn ghost" data-act="group-new" title="New group: sessions side by side that can message each other">+</button></div>
@@ -533,7 +560,7 @@
     <div id="sideWt"></div>
    </div>
     <details class="menu side-new" id="newMenu">
-      <summary class="btn primary">+ New session</summary>
+      <summary class="btn primary" title="New session">+ New session</summary>
       <div class="menu-pop">
         <div id="folders"></div>
       </div>
@@ -543,6 +570,7 @@
         <span class="ico"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" style="vertical-align:-2px"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7 3.4 3.4"/></svg></span><span class="nt">Settings</span>
       </button>
       <span class="ver" id="version"></span>
+      <button class="icon-btn side-fold" data-act="side-mini" id="sideFold" title="Fold the sidebar into icons (more room for chats)" aria-label="Fold the sidebar"><svg class="fold-out" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11M11 6 9 8l2 2"/></svg><svg class="fold-in" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11M9 6l2 2-2 2"/></svg></button>
     </div>
   </nav>
 
@@ -1599,6 +1627,20 @@ function pbarOf(s) {
   return p ? `<span class="pbar" style="background:${esc(p.color)}" title="${esc(p.name)}"></span>` : '';
 }
 
+// The badge a session, project or group shows when the sidebar is folded into icons.
+function mono(name, shape, color) {
+  const ch = (String(name || '').match(/[\p{L}\p{N}]/u) || ['•'])[0].toUpperCase();
+  return `<span class="mono${shape ? ' ' + shape : ''}"${color ? ` style="--st:${esc(color)}"` : ''} aria-hidden="true">${esc(ch)}</span>`;
+}
+
+function setSideMini(on) {
+  document.body.classList.toggle('side-mini', on);
+  $('#sideFold').title = on ? 'Show the full sidebar' : 'Fold the sidebar into icons (more room for chats)';
+  $('#sideFold').setAttribute('aria-label', on ? 'Show the full sidebar' : 'Fold the sidebar');
+  try { localStorage.setItem('cs-side-mini', on ? '1' : ''); } catch { /* private window */ }
+}
+try { if (localStorage.getItem('cs-side-mini')) setSideMini(true); } catch { /* private window */ }
+
 function renderSide() {
   if (!S) return;
   $('#navOverview').classList.toggle('active', view === 'overview' && !projFilter);
@@ -1615,8 +1657,8 @@ function renderSide() {
     const sub = open.length
       ? `${open.length} open` + (needs ? ` · ${needs} need you` : working ? ` · ${working} working` : '')
       : `${everything.filter((s) => s.project === p.id).length} recent`;
-    return `<button class="nav-item${view === 'overview' && projFilter === p.id ? ' active' : ''}" data-act="go" data-view="overview" data-arg="${esc(p.id)}" data-drop-pid="${esc(p.id)}">
-      <span class="pdot" style="background:${esc(p.color)};margin-top:4px"></span><span><span class="nt">${esc(p.name)}</span><span class="ns">${sub}</span></span></button>`;
+    return `<button class="nav-item${view === 'overview' && projFilter === p.id ? ' active' : ''}" data-act="go" data-view="overview" data-arg="${esc(p.id)}" data-drop-pid="${esc(p.id)}" title="${esc(p.name)} · ${esc(sub)}">
+      <span class="pdot" style="background:${esc(p.color)};margin-top:4px"></span>${mono(p.name, 'sq', p.color)}<span><span class="nt">${esc(p.name)}</span><span class="ns">${sub}</span></span></button>`;
   }).join('') + (S.projects.length ? '<div class="side-hint">Drag any session onto a project to put it there.</div>' : '') || '<div class="side-empty">Group sessions by what they are for. Use + to make one.</div>';
 
   const appItems = S.terminals.list.map((t) => {
@@ -1626,16 +1668,16 @@ function renderSide() {
     if (known && !visible(anySession(known.sessionId) || known)) return '';
     const st = t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(s);
     const title = known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
-    return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}"${known ? ` draggable="true" data-sid="${esc(known.sessionId)}"` : ''}>
-      ${known ? pbarOf(known) : ''}<span class="dot"></span><span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
+    return `<button class="nav-item ${st.cls}${view === 'term' && t.id === current ? ' active' : ''}" data-act="open" data-tid="${esc(t.id)}" title="${esc(title)} · ${esc(st.text)}"${known ? ` draggable="true" data-sid="${esc(known.sessionId)}"` : ''}>
+      ${known ? pbarOf(known) : ''}<span class="dot"></span>${mono(title)}<span><span class="nt">${esc(title)}</span><span class="ns">${st.text} · ${esc(home(t.cwd))}</span></span></button>`;
   });
   $('#sideApp').html = appItems.join('') || '<div class="side-empty">None yet. Use + New session or Reopen.</div>';
   renderSideGroups();
   const wt = S.live.filter((s) => !s.appId && visible(s));
   $('#sideWt').html = wt.map((s) => {
     const st = statusOf(s);
-    return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="Go to its ${WT} tab">
-      ${pbarOf(s)}<span class="dot"></span><span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
+    return `<div class="nav-row"><button class="nav-item ${st.cls}" draggable="true" data-sid="${esc(s.sessionId)}" data-act="focus" data-id="${esc(s.sessionId)}" title="${esc(label(s))} · ${esc(st.text)}. Click to go to its ${WT} tab">
+      ${pbarOf(s)}<span class="dot"></span>${mono(label(s))}<span><span class="nt">${esc(label(s))}</span><span class="ns">${st.text} · ${esc(home(s.cwd))}</span></span></button>
       <button class="btn small ghost" data-act="move" data-id="${esc(s.sessionId)}" ${s.status === 'idle' ? '' : 'disabled'} title="${s.status === 'idle' ? 'Move this session into the app' : 'Can move once it is idle'}">Move</button></div>`;
   }).join('') || '<div class="side-empty">None.</div>';
 }
@@ -2476,8 +2518,8 @@ function renderSideGroups() {
     const busy = g.members.filter((m) => m.status === 'busy').length;
     const needs = g.members.filter((m) => m.status === 'waiting').length;
     const sub = `${g.members.length} session${g.members.length === 1 ? '' : 's'}` + (g.paused ? ' · paused' : needs ? ` · ${needs} need you` : busy ? ` · ${busy} working` : '');
-    return `<button class="nav-item${view === 'group' && curGroup === g.id ? ' active' : ''}" data-act="go" data-view="group" data-arg="${esc(g.id)}">
-      <span class="ico" style="color:${esc(groupColor(g))};width:12px;margin-top:1px">▦</span><span><span class="nt">${esc(g.name)}</span><span class="ns">${esc(sub)}</span></span></button>`;
+    return `<button class="nav-item${view === 'group' && curGroup === g.id ? ' active' : ''}" data-act="go" data-view="group" data-arg="${esc(g.id)}" title="${esc(g.name)} · ${esc(sub)}">
+      <span class="ico gico" style="color:${esc(groupColor(g))};width:12px;margin-top:1px">▦</span>${mono(g.name, 'sq', groupColor(g))}<span><span class="nt">${esc(g.name)}</span><span class="ns">${esc(sub)}</span></span></button>`;
   }).join('') || '<div class="side-empty">Put sessions side by side and let them talk. Use + to make one.</div>';
 }
 
@@ -3202,7 +3244,8 @@ document.addEventListener('click', async (e) => {
   // On a phone the sidebar is a drawer: picking anything in it closes it.
   if (b.closest('nav.side') && b.dataset.act !== 'pmenu') document.body.classList.remove('side-open');
   switch (b.dataset.act) {
-    case 'side-toggle': document.body.classList.toggle('side-open'); break;
+    case 'side-toggle': if (NARROW.matches) document.body.classList.toggle('side-open'); else setSideMini(!document.body.classList.contains('side-mini')); break;
+    case 'side-mini': setSideMini(!document.body.classList.contains('side-mini')); break;
     case 'side-close': document.body.classList.remove('side-open'); break;
     case 'fold-browse':
       browse = browse && browse.pid === b.dataset.pid ? null : { pid: b.dataset.pid, dir: '', subs: null };
