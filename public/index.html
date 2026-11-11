@@ -842,6 +842,9 @@ let projFilter = null; // project shown on the overview, null = every session
 let current = null;    // in-app terminal id on screen (view 'term')
 let hostUp = true;
 let endArmed = null;   // terminal id whose "End session" is waiting for confirmation
+// Close out: /closeout typed into a session, then End session once its report is in.
+// tid -> { phase: 'sent' | 'running' | 'done', at }
+const closeouts = new Map();
 let disarmTimer = null;
 const lastKnown = new Map(); // terminal id -> last Claude session seen inside it (survives its exit)
 
@@ -1519,6 +1522,32 @@ function go(v, arg) {
   if (v === 'overview') $('#overview').scrollTop = 0;
 }
 
+// Moves a closeout along as the session's status changes: busy once Claude starts,
+// done when it is idle (or asking) again. A command that never starts (an old window
+// without the skill) counts as done after 20 seconds so the bar does not hang.
+function closeoutPhase(id, s) {
+  const c = closeouts.get(id);
+  if (!c) return null;
+  const st = s && s.status;
+  if (c.phase === 'sent' && st === 'busy') c.phase = 'running';
+  else if (c.phase === 'sent' && Date.now() - c.at > 20000) c.phase = 'done';
+  else if (c.phase === 'running' && (st === 'idle' || st === 'waiting')) {
+    c.phase = 'done';
+    if (current !== id || document.hidden) toast('Closeout finished: ' + (s ? label(s) : 'session'));
+  }
+  return c.phase;
+}
+
+function startCloseout(id) {
+  const { s } = terminalInfo(id);
+  if (!s || s.status !== 'idle') return toast(s && s.status === 'busy' ? 'Claude is still working; close out once it is idle' : 'Close out once the session is idle', true);
+  closeouts.set(id, { phase: 'sent', at: Date.now() });
+  sendInput(id, '/closeout');
+  // A moment for the slash menu to open, then Enter runs it.
+  setTimeout(() => sendInput(id, '\r'), 400);
+  renderTermBar();
+}
+
 function renderTermBar() {
   if (view !== 'term' || !current || !S) return;
   const { t, s } = terminalInfo(current);
@@ -1532,10 +1561,15 @@ function renderTermBar() {
   $('#tPath').title = (t && t.cwd) || (known && known.cwd) || '';
   $('#tProj').html = s ? pchip(s) : '';
   $('#tCtx').html = s ? ctxBadge(s) : '';
+  const co = t && !t.exited ? closeoutPhase(current, s) : null;
   $('#tEnd').html = t && !t.exited
-    ? (endArmed === current
+    ? (co === 'sent' || co === 'running'
+      ? '<span class="tm">Closing out…</span> <button class="btn small ghost" data-act="closeout-cancel" title="Stop waiting for the report; nothing is undone">Stop waiting</button>'
+      : co === 'done'
+      ? '<span class="tm">Report ready. Read it, then</span> <button class="btn small danger" data-act="kill-yes">End session</button> <button class="btn small ghost" data-act="closeout-cancel">Keep it</button>'
+      : endArmed === current
       ? '<span class="tm">End this session?</span> <button class="btn small danger" data-act="kill-yes">End it</button> <button class="btn small ghost" data-act="kill-no">Keep</button>'
-      : '<button class="btn small ghost" data-act="kill">End session</button>')
+      : '<button class="btn small ghost" data-act="closeout" title="Types /closeout so Claude saves decisions, tasks and answers before you close this session">Close out</button> <button class="btn small ghost" data-act="kill">End session</button>')
     : '';
   const warn = $('#hostWarn');
   warn.hidden = hostUp;
@@ -3319,7 +3353,9 @@ document.addEventListener('click', async (e) => {
       disarmTimer = setTimeout(() => { endArmed = null; renderTermBar(); }, 6000);
       break;
     case 'kill-no': clearTimeout(disarmTimer); endArmed = null; renderTermBar(); break;
-    case 'kill-yes': clearTimeout(disarmTimer); endArmed = null; await act('/api/term/kill', { id: current }, 'Ending session…'); break;
+    case 'kill-yes': clearTimeout(disarmTimer); endArmed = null; closeouts.delete(current); await act('/api/term/kill', { id: current }, 'Ending session…'); break;
+    case 'closeout': if (current) startCloseout(current); break;
+    case 'closeout-cancel': closeouts.delete(current); renderTermBar(); break;
     case 'forget': await act('/api/term/forget', { id: b.dataset.tid }); break;
     case 'more': histLimit += 15; renderHistory(); break;
     case 'check': await checkUpdates(false); break;

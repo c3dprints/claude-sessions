@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.27 (2026-11-11)
+
+- **Close out** button in a session's top bar (sessions in the app): it types `/closeout` into the session, so a closeout skill can save decisions, tasks and answers before you close it. The bar shows **Closing out…** while Claude works, then **Report ready** with **End session** (and **Keep it**), so you read the report first. It only starts when the session is idle. You need a skill named `closeout` in `~/.claude/skills`; without one, Claude says it does not know the command and the bar offers End session after 20 seconds.
+
 ## 1.5.26 (2026-11-11)
 
 - **Fold the sidebar into icons**: the button at the bottom of the sidebar (next to Settings) shrinks it to a narrow rail so terminals and chats get the width. The views keep their icons; sessions, projects and groups show as letter badges (a session's ring is its status color, a project or group's is its color), and hovering one shows its name and state. **+** still starts a new session. The same button unfolds it, and the app remembers the choice. Phones keep the slide-out list.
