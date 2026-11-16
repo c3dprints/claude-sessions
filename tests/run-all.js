@@ -827,6 +827,12 @@ function request(port, method, p, { body, headers = {}, ip = '127.0.0.1' } = {})
       assert.strictEqual(s.terminal, null);
       assert.strictEqual((await post({ theme: 'light' })).json.theme, 'light');
       assert.strictEqual((await post({ theme: 'pink' })).status, 400);
+      assert.strictEqual((await post({ theme: 'nightcity' })).json.theme, 'nightcity');
+      assert.strictEqual((await post({ theme: 'netrunner' })).json.theme, 'netrunner');
+      const font = await request(PORT, 'GET', '/vendor/fonts/Orbitron-Variable.ttf');
+      assert.strictEqual(font.status, 200);
+      assert.strictEqual(font.headers['content-type'], 'font/ttf');
+      await post({ theme: 'light' });
       const ok = await post({ terminal: { preset: 'forest', background: '#0F1A14', foreground: '#d3e8d8', cursor: '#4fbf8a', fontSize: 15 } });
       assert.deepStrictEqual(ok.json.terminal, { preset: 'forest', fontSize: 15, background: '#0f1a14', foreground: '#d3e8d8', cursor: '#4fbf8a' });
       assert.strictEqual((await post({ terminal: { background: 'red;}', foreground: '#ffffff', cursor: '#ffffff' } })).status, 400, 'only #rrggbb colors');

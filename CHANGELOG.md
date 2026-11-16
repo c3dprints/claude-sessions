@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.28 (2026-11-16)
+
+- Two cyberpunk app themes from Repoz in Settings, Appearance: **Night City** (neon yellow) and **Netrunner** (neon cyan), with Orbitron headings, Rajdhani text, a soft neon glow and scanlines (a **Scanlines** switch turns them off on that screen). Matching **Night City** and **Netrunner** terminal colors are under Popular themes. The fonts ship with the app (SIL Open Font License), so nothing loads from the internet.
+
 ## 1.5.27 (2026-11-11)
 
 - **Close out** button in a session's top bar (sessions in the app): it types `/closeout` into the session, so a closeout skill can save decisions, tasks and answers before you close it. The bar shows **Closing out…** while Claude works, then **Report ready** with **End session** (and **Keep it**), so you read the report first. It only starts when the session is idle. You need a skill named `closeout` in `~/.claude/skills`; without one, Claude says it does not know the command and the bar offers End session after 20 seconds.

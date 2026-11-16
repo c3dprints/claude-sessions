@@ -1266,7 +1266,7 @@ const routes = {
       wikiCache.clear();
     }
     if (b.theme !== undefined) {
-      if (!['system', 'dark', 'light'].includes(b.theme)) throw fail(400, 'theme must be system, dark or light');
+      if (!['system', 'dark', 'light', 'nightcity', 'netrunner'].includes(b.theme)) throw fail(400, 'theme must be system, dark, light, nightcity or netrunner');
       store.state.settings.theme = b.theme;
     }
     if (b.terminal !== undefined) store.state.settings.terminal = checkTerminalLook(b.terminal);
@@ -1534,6 +1534,10 @@ const STATIC = {
   '/vendor/xterm.js': ['vendor/xterm.js', 'text/javascript; charset=utf-8'],
   '/vendor/xterm.css': ['vendor/xterm.css', 'text/css; charset=utf-8'],
   '/vendor/addon-fit.js': ['vendor/addon-fit.js', 'text/javascript; charset=utf-8'],
+  // Fonts for the Night City and Netrunner looks (SIL Open Font License, see vendor/fonts).
+  '/vendor/fonts/Orbitron-Variable.ttf': ['vendor/fonts/Orbitron-Variable.ttf', 'font/ttf'],
+  '/vendor/fonts/Rajdhani-SemiBold.ttf': ['vendor/fonts/Rajdhani-SemiBold.ttf', 'font/ttf'],
+  '/vendor/fonts/Rajdhani-Bold.ttf': ['vendor/fonts/Rajdhani-Bold.ttf', 'font/ttf'],
 };
 
 async function handle(req, res, isRemote = false) {

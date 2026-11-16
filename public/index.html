@@ -45,6 +45,53 @@
     --shadow: 0 1px 2px rgba(20,24,33,.06);
     color-scheme: light;
   }
+  /* Night City (yellow) and Netrunner (cyan), the cyberpunk looks from Repoz. Both dark. */
+  @font-face { font-family: "Orbitron"; src: url(/vendor/fonts/Orbitron-Variable.ttf) format("truetype"); font-weight: 400 900; font-display: swap; }
+  @font-face { font-family: "Rajdhani"; src: url(/vendor/fonts/Rajdhani-SemiBold.ttf) format("truetype"); font-weight: 400 600; font-display: swap; }
+  @font-face { font-family: "Rajdhani"; src: url(/vendor/fonts/Rajdhani-Bold.ttf) format("truetype"); font-weight: 700 900; font-display: swap; }
+  :root[data-theme="nightcity"] {
+    --bg: #07070b; --surface: #10101a; --surface-2: #161624; --border: #2a2a3d;
+    --text: #e9f1ff; --muted: #a9b2cc; --faint: #6c7391;
+    --accent: #fcee0a; --accent-text: #07070b;
+    --working: #00f0ff; --waiting: #ffb000; --closed: #ff2a6d; --ok: #00f5a0;
+    --c-system: #6c7391; --c-memory: #e86fd0; --c-messages: #00d8e6; --c-free: #2a2a3d;
+    --code-bg: #05050a; --neon-2: #00f0ff; --neon-3: #ff2a6d;
+    --shadow: none; color-scheme: dark;
+  }
+  :root[data-theme="netrunner"] {
+    --bg: #05080f; --surface: #0c1220; --surface-2: #111a2c; --border: #22304a;
+    --text: #e9f1ff; --muted: #a9b2cc; --faint: #66708f;
+    --accent: #00f0ff; --accent-text: #021014;
+    --working: #4d9fff; --waiting: #fcee0a; --closed: #ff2a6d; --ok: #00f5a0;
+    --c-system: #66708f; --c-memory: #ff2bd6; --c-messages: #4d9fff; --c-free: #22304a;
+    --code-bg: #04070d; --neon-2: #ff2bd6; --neon-3: #fcee0a;
+    --shadow: none; color-scheme: dark;
+  }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) {
+    --glow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) body {
+    font: 600 15px/1.4 "Rajdhani", "Segoe UI", system-ui, sans-serif; letter-spacing: .01em;
+    background:
+      radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--neon-3) 9%, transparent), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, color-mix(in srgb, var(--neon-2) 8%, transparent), transparent 60%),
+      var(--bg);
+  }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) :is(h1, h2, h3, h4) { font-family: "Orbitron", "Rajdhani", sans-serif; font-weight: 700; letter-spacing: .06em; }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) header h1 { color: var(--accent); text-shadow: var(--glow); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) header { border-bottom-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 25%, transparent); }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) :is(.btn.primary, .seg button.on, .nav-item.active) { box-shadow: var(--glow); }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) :is(input, select, textarea):focus { outline-color: var(--accent); }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) ::selection { background: var(--accent); color: var(--accent-text); }
+  /* Scanlines over the whole app; clicks pass through. Settings can turn them off. */
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) body:not(.noscan)::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+  }
+  .scan-row { display: none; }
+  :root:is([data-theme="nightcity"], [data-theme="netrunner"]) .scan-row { display: flex; }
+  #themeSeg { flex-wrap: wrap; }
+
   * { box-sizing: border-box; }
   /* The app fills the screen and never scrolls as a page; overscroll would bounce or reload it on a phone. */
   html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
@@ -796,8 +843,12 @@
           <button type="button" data-act="theme" data-v="system">System</button>
           <button type="button" data-act="theme" data-v="dark">Dark</button>
           <button type="button" data-act="theme" data-v="light">Light</button>
+          <button type="button" data-act="theme" data-v="nightcity" title="Cyberpunk look with neon yellow, from Repoz">Night City</button>
+          <button type="button" data-act="theme" data-v="netrunner" title="Cyberpunk look with neon cyan, from Repoz">Netrunner</button>
         </div>
       </div>
+      <label class="switch scan-row"><input type="checkbox" id="optScan"> Scanlines</label>
+      <p class="note">Night City and Netrunner pair well with the matching terminal colors below.</p>
     </section>
 
     <section class="set-sec">
@@ -1112,6 +1163,11 @@ const THEME_LIST = [
   ['solarized-light', 'Solarized Light', 1, '#fdf6e3 #657b83 #586e75 #eee8d5', '#073642 #dc322f #859900 #b58900 #268bd2 #d33682 #2aa198 #eee8d5 #002b36 #cb4b16 #586e75 #657b83 #839496 #6c71c4 #93a1a1 #fdf6e3'],
   ['rose-pine-dawn', 'Rosé Pine Dawn', 1, '#faf4ed #575279 #9893a5 #dfdad9', '#f2e9e1 #b4637a #286983 #ea9d34 #56949f #907aa9 #d7827e #575279 #797593 #b4637a #286983 #ea9d34 #56949f #907aa9 #d7827e #575279'],
 ];
+// The two cyberpunk looks, made for this app.
+THEME_LIST.push(
+  ['nightcity', 'Night City', 0, '#07070b #e9f1ff #fcee0a #3a3a12', '#10101a #ff2a6d #00f5a0 #fcee0a #00b8ff #e86fd0 #00f0ff #c8cfe0 #5c6078 #ff5c8d #5cffc0 #fff45c #4dd2ff #f29be3 #6cf6ff #ffffff'],
+  ['netrunner', 'Netrunner', 0, '#05080f #d8f6ff #00f0ff #12324a', '#0c1220 #ff2a6d #00f5a0 #fcee0a #4d9fff #ff2bd6 #00f0ff #c8d6ec #56627f #ff5c8d #5cffc0 #fff45c #7db8ff #ff6be3 #6cf6ff #ffffff'],
+);
 const ANSI_KEYS = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
 for (const [id, name, light, main, ansi] of THEME_LIST) {
   const [background, foreground, cursor, selection] = main.split(' ');
@@ -1142,8 +1198,10 @@ function xtermTheme(t) {
   };
 }
 
+function scanOn() { try { return localStorage.getItem('cs-scan') !== 'off'; } catch { return true; } }
 function applyLook() {
   const root = document.documentElement;
+  document.body.classList.toggle('noscan', !scanOn());
   if (look.theme === 'system') root.removeAttribute('data-theme'); else root.dataset.theme = look.theme;
   const t = look.terminal;
   root.style.setProperty('--term-bg', t.background);
@@ -2091,6 +2149,7 @@ const SAMPLE = [
 
 function renderSettings() {
   for (const b of document.querySelectorAll('#themeSeg button')) b.classList.toggle('on', b.dataset.v === look.theme);
+  $('#optScan').checked = scanOn();
   const t = look.terminal;
   // A preview shows the theme's own red, green, yellow and blue when it has them.
   const tile = (p, on, name) => {
@@ -3545,6 +3604,10 @@ $('#sideWtHead').textContent = 'In ' + WT;
 $('#optStartupLabel').textContent = STARTUP;
 $('#optStartup').addEventListener('change', (e) => act('/api/settings', { startWithWindows: e.target.checked }, e.target.checked ? (MAC ? 'Starts at login' : 'Starts with Windows') : (MAC ? 'Will not start at login' : 'Will not start with Windows')));
 $('#optTrust').addEventListener('change', (e) => act('/api/settings', { autoTrust: e.target.checked }, e.target.checked ? 'New chats trust their folder by themselves' : 'New chats ask about the folder again'));
+$('#optScan').addEventListener('change', (e) => {
+  try { localStorage.setItem('cs-scan', e.target.checked ? 'on' : 'off'); } catch { /* private window */ }
+  document.body.classList.toggle('noscan', !e.target.checked);
+});
 $('#optTeam').addEventListener('change',(e) => act('/api/settings', { teamTalk: e.target.checked }, e.target.checked ? 'Sessions started from now on can message their group' : 'New sessions start without the team tools'));
 $('#optAuto').addEventListener('change', (e) => act('/api/settings', { autoUpdate: e.target.checked }, e.target.checked ? 'Updates install automatically' : 'Updates wait for you'));
 
