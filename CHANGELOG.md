@@ -2,6 +2,10 @@
 
 Newest first. The top heading must match `version` in package.json (a test checks it).
 
+## 1.5.29 (2026-11-19)
+
+- **Side by side** in the sidebar: run 2, 3 or 4 conversations next to each other. Each pane has a dropdown to pick its conversation: one running in the app, one in Windows Terminal (moved into the app), a closed one (reopened in that pane), or a new chat in one of your folders. Lay them out side by side, stacked, or as a grid two across. A conversation can only be in one pane at a time. Your panes and picks are remembered on that screen, and a pane whose session ended offers **Reopen it here**.
+
 ## 1.5.28 (2026-11-16)
 
 - Two cyberpunk app themes from Repoz in Settings, Appearance: **Night City** (neon yellow) and **Netrunner** (neon cyan), with Orbitron headings, Rajdhani text, a soft neon glow and scanlines (a **Scanlines** switch turns them off on that screen). Matching **Night City** and **Netrunner** terminal colors are under Popular themes. The fonts ship with the app (SIL Open Font License), so nothing loads from the internet.

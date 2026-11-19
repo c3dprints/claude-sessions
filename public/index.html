@@ -470,6 +470,18 @@
   /* groups: several terminals side by side, which can message each other */
   #groupView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
   #groupView[hidden] { display: none; }
+  #splitView { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  #splitView[hidden] { display: none; }
+  .s-panes { flex: 1; display: grid; gap: 6px; padding: 6px; min-width: 0; min-height: 0; }
+  .s-panes.cols { grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
+  .s-panes.rows { grid-template-rows: repeat(var(--n), minmax(0, 1fr)); }
+  .s-panes.sgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+  .s-panes.sgrid.odd .gpane:last-child { grid-column: span 2; }
+  .s-panes .gp-head { cursor: default; }
+  .s-panes .gp-head .pn { font-weight: 700; font-size: 12px; color: var(--faint); }
+  .s-panes .gp-head select { flex: 1; min-width: 0; max-width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 3px 6px; font-size: 12.5px; cursor: pointer; }
+  .s-panes .gp-head select:focus { outline: 1px solid var(--accent); }
+  .s-panes .gp-over .hint { max-width: 300px; line-height: 1.5; }
   .g-bar .seg button { padding: 3px 10px; font-size: 12.5px; }
   .g-pause { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: color-mix(in srgb, var(--waiting) 16%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13px; }
   .g-pause[hidden] { display: none; }
@@ -594,6 +606,7 @@
       <button class="nav-item view" data-act="go" data-view="overview" id="navOverview" title="All sessions"><span class="ico">▤</span><span class="nt">All sessions</span></button>
       <button class="icon-btn" data-act="upd-icon" id="updIcon" title="Check for updates"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97"/><path d="M13.6 2.2v3.1h-3.1"/></svg></button>
     </div>
+    <button class="nav-item view" data-act="go" data-view="split" id="navSplit" title="Side by side: pick up to 4 conversations to run next to each other"><span class="ico">▥</span><span class="nt">Side by side</span></button>
     <button class="nav-item view" data-act="go" data-view="context" id="navContext" title="Context and usage"><span class="ico">◔</span><span class="nt">Context and usage</span></button>
     <button class="nav-item view" data-act="go" data-view="skills" id="navSkills" title="Skills"><span class="ico">✦</span><span class="nt">Skills</span><span class="num" id="skillsNum"></span></button>
     <button class="nav-item view" data-act="go" data-view="wiki" id="navWiki" title="Wiki"><span class="ico">❡</span><span class="nt">Wiki</span></button>
@@ -710,6 +723,11 @@
         <button type="button" data-key="ctrlc">Ctrl+C</button>
       </div>
       <div class="ended-bar" id="endedBar" hidden></div>
+    </section>
+
+    <section id="splitView" hidden>
+      <div class="term-bar g-bar" id="sBar"></div>
+      <div class="s-panes cols" id="sPanes"></div>
     </section>
 
     <section id="groupView" hidden>
@@ -1462,7 +1480,7 @@ async function clipImage(id) {
 // Ctrl+V outside a text box (after clicking the sidebar, say) still reaches the session on screen.
 document.addEventListener('paste', (e) => {
   if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable], .term-pane')) return;
-  const id = view === 'term' ? current : view === 'group' ? lastFocus : null;
+  const id = view === 'term' ? current : view === 'group' || view === 'split' ? lastFocus : null;
   if (id && terms.has(id)) pasteImage(id, e);
 });
 
@@ -1534,6 +1552,7 @@ function paneVisibility() {
   $('#wikiView').hidden = view !== 'wiki';
   $('#termView').hidden = view !== 'term';
   $('#groupView').hidden = view !== 'group';
+  $('#splitView').hidden = view !== 'split';
 }
 
 // Shows an in-app terminal; null goes back to the overview.
@@ -1545,7 +1564,7 @@ function show(id) {
   paneVisibility();
   for (const [tid, t] of terms) t.el.classList.toggle('on', tid === id);
   const t = getTerm(id);
-  if (t.el.parentElement !== $('#termStack')) { $('#termStack').appendChild(t.el); gKey = null; }
+  if (t.el.parentElement !== $('#termStack')) { $('#termStack').appendChild(t.el); gKey = null; sKey = null; }
   t.el.classList.add('on');
   requestAnimationFrame(() => { fitCurrent(); t.term.focus(); });
   render();
@@ -1574,6 +1593,9 @@ function go(v, arg) {
     curGroup = arg;
     gKey = null;
     setHash('g/' + arg);
+  } else if (v === 'split') {
+    sKey = null;
+    setHash('split');
   }
   paneVisibility();
   render();
@@ -1737,6 +1759,7 @@ function renderSide() {
   if (!S) return;
   $('#navOverview').classList.toggle('active', view === 'overview' && !projFilter);
   $('#navContext').classList.toggle('active', view === 'context');
+  $('#navSplit').classList.toggle('active', view === 'split');
   $('#navSkills').classList.toggle('active', view === 'skills');
   $('#navWiki').classList.toggle('active', view === 'wiki');
   $('#skillsNum').textContent = skills ? skills.length : '';
@@ -2933,8 +2956,156 @@ $('#gPanes').addEventListener('pointerdown', (e) => {
   }, () => { pane.classList.remove('moving'); save({ boxes: g.boxes }); });
 });
 
+// ---- side by side: 2 to 4 panes, each showing the conversation picked in its dropdown ----
+// Kept per screen (localStorage): how many panes, the layout, and each pane's terminal and
+// conversation, so a pane finds its conversation again after it is reopened.
+let sKey = null;
+let split = { n: 2, layout: 'cols', slots: [] };
+try {
+  const v = JSON.parse(localStorage.getItem('cs-split') || 'null');
+  if (v && [2, 3, 4].includes(v.n)) split = { n: v.n, layout: ['cols', 'rows', 'sgrid'].includes(v.layout) ? v.layout : 'cols', slots: Array.isArray(v.slots) ? v.slots.slice(0, 4) : [] };
+} catch { /* nothing saved */ }
+function saveSplit() { try { localStorage.setItem('cs-split', JSON.stringify(split)); } catch { /* private window */ } }
+
+// The terminal a pane shows: its own, or the one now running its conversation.
+function slotTerm(i) {
+  const sl = split.slots[i];
+  if (!sl || !S) return null;
+  let t = sl.tid && S.terminals.list.find((x) => x.id === sl.tid);
+  if ((!t || t.exited) && sl.sid) {
+    const run = S.terminals.list.find((x) => x.sessionId === sl.sid && !x.exited);
+    if (run) { t = run; sl.tid = run.id; saveSplit(); }
+  }
+  return t || null;
+}
+
+function termName(t) {
+  const known = S.live.find((x) => x.appId === t.id);
+  return known ? label(known) : (t.resumeId ? 'Reopening…' : 'New session');
+}
+
+function splitOptions(i) {
+  const sl = split.slots[i] || {};
+  // What the other panes show, so the same conversation is not picked twice.
+  const usedT = new Map();
+  const usedS = new Map();
+  split.slots.slice(0, split.n).forEach((x, j) => {
+    if (j === i || !x) return;
+    const t = slotTerm(j);
+    if (t) usedT.set(t.id, j);
+    const sid = (t && t.sessionId) || x.sid;
+    if (sid) usedS.set(sid, j);
+  });
+  const opt = (v, text, sel, j) => `<option value="${esc(v)}"${sel ? ' selected' : ''}${j !== undefined ? ' disabled' : ''}>${esc(text)}${j !== undefined ? ` (in pane ${j + 1})` : ''}</option>`;
+  const cut = (x) => (x.length > 70 ? x.slice(0, 69) + '…' : x);
+  const cur = slotTerm(i);
+  const inApp = S.terminals.list.filter((t) => !t.exited);
+  const inAppSids = new Set(inApp.map((t) => t.sessionId).filter(Boolean));
+  const wt = S.live.filter((x) => !x.appId && !inAppSids.has(x.sessionId));
+  const seen = new Set([...inAppSids, ...wt.map((x) => x.sessionId)]);
+  const past = [...S.closed, ...S.history].filter((x) => !seen.has(x.sessionId) && seen.add(x.sessionId)).slice(0, 40);
+  let html = `<option value="">${cur || sl.sid ? 'Show nothing here' : 'Pick a conversation…'}</option>`;
+  if (inApp.length) html += '<optgroup label="Running in this app">' + inApp.map((t) => opt('t:' + t.id, cut(termName(t)) + ' · ' + statusOf(S.live.find((x) => x.appId === t.id) || null).text, cur && cur.id === t.id, usedT.get(t.id))).join('') + '</optgroup>';
+  if (wt.length) html += `<optgroup label="In ${WT} (moves it into the app)">` + wt.map((x) => opt('w:' + x.sessionId, cut(label(x)), false, usedS.get(x.sessionId))).join('') + '</optgroup>';
+  if (past.length) html += '<optgroup label="Closed (reopens it here)">' + past.map((x) => opt('s:' + x.sessionId, cut(label(x)) + ' · ' + ago(x.closedAt || x.lastActivity), !cur && sl.sid === x.sessionId, usedS.get(x.sessionId))).join('') + '</optgroup>';
+  if (S.folders.length) html += '<optgroup label="New chat in">' + S.folders.map((f, k) => opt('n:' + k, home(f), false)).join('') + '</optgroup>';
+  return html;
+}
+
+function renderSplit() {
+  if (!S) return;
+  const narrow = NARROW.matches;
+  const layout = narrow ? 'rows' : split.layout;
+  const seg = (act, v, t, on, tip) => `<button type="button" data-act="${act}" data-v="${v}" class="${on ? 'on' : ''}" title="${tip}">${t}</button>`;
+  $('#sBar').html = '<span class="ico">▥</span><span class="tt">Side by side</span><span class="spacer"></span>' +
+    `<span class="seg">${[2, 3, 4].map((n) => seg('s-n', n, n + ' panes', split.n === n, `Show ${n} conversations at once`)).join('')}</span>` +
+    (narrow ? '' : `<span class="seg">${seg('s-lay', 'cols', '▥ Side by side', split.layout === 'cols', 'All next to each other')}${seg('s-lay', 'rows', '▤ Stacked', split.layout === 'rows', 'One above the other')}${seg('s-lay', 'sgrid', '▦ Grid', split.layout === 'sgrid', 'Two across')}</span>`);
+
+  const panes = $('#sPanes');
+  const tids = Array.from({ length: split.n }, (_, i) => { const t = slotTerm(i); return t ? t.id : ''; });
+  const key = [split.n, layout, ...tids].join('|');
+  const intact = tids.every((tid, i) => !tid || !terms.has(tid) || terms.get(tid).el.parentElement === panes.querySelector(`.gpane[data-i="${i}"] .gp-body`));
+  if (key !== sKey || !intact) {
+    sKey = key;
+    panes.className = `s-panes ${layout}${split.n % 2 ? ' odd' : ''}`;
+    panes.style.setProperty('--n', split.n);
+    // Park the terminals first: they move into the new panes instead of being torn down.
+    for (const el of panes.querySelectorAll('.term-pane')) $('#termStack').appendChild(el);
+    panes.innerHTML = '';
+    for (let i = 0; i < split.n; i++) {
+      const pane = document.createElement('div');
+      pane.className = 'gpane';
+      pane.dataset.i = i;
+      pane.dataset.tid = tids[i];
+      pane.innerHTML = '<div class="gp-head"></div><div class="gp-body"></div>';
+      panes.appendChild(pane);
+      if (tids[i]) {
+        const t = getTerm(tids[i]);
+        t.el.classList.add('on');
+        pane.querySelector('.gp-body').appendChild(t.el);
+      }
+    }
+  }
+  for (let i = 0; i < split.n; i++) {
+    const pane = panes.querySelector(`.gpane[data-i="${i}"]`);
+    const t = slotTerm(i);
+    const sl = split.slots[i] || {};
+    const sess = t ? S.live.find((x) => x.appId === t.id) : null;
+    const st = t ? (t.exited ? { cls: 'ended', text: 'Ended' } : statusOf(sess || null)) : null;
+    const head = pane.querySelector('.gp-head');
+    // Leave a dropdown alone while it is open, so the 3 second refresh does not close it.
+    if (!(document.activeElement && document.activeElement.tagName === 'SELECT' && head.contains(document.activeElement))) {
+      head.html = `<span class="pn">${i + 1}</span>${st ? `<span class="status ${st.cls}" title="${esc(st.text)}"><span class="dot"></span></span>` : ''}
+        <select data-i="${i}" aria-label="Conversation in pane ${i + 1}">${splitOptions(i)}</select>
+        ${t && !t.exited ? `<button class="btn small ghost" data-act="open" data-tid="${esc(t.id)}" title="Open on its own, full size">⤢</button>` : ''}`;
+    }
+    let over = pane.querySelector('.gp-over');
+    const sid = (t && t.sessionId) || sl.sid;
+    const why = !t
+      ? (sl.sid ? `<div class="hint">That conversation is closed.</div><button class="btn primary" data-act="s-reopen" data-i="${i}">Reopen it here</button>`
+        : `<div class="hint">Pick a conversation in the list above: one running in the app, one in ${WT}, a closed one to reopen, or a new chat.</div>`)
+      : t.exited ? `<div class="hint">This session ended.</div>${sid ? `<button class="btn primary" data-act="s-reopen" data-i="${i}">Reopen it here</button>` : ''}`
+      : '';
+    if (why && !over) { over = document.createElement('div'); over.className = 'gp-over'; pane.querySelector('.gp-body').appendChild(over); }
+    if (over) { if (why) over.html = why; else over.remove(); }
+  }
+  markFocus();
+  requestAnimationFrame(fitCurrent);
+}
+
+// Puts a terminal into pane i once the server has started it.
+async function splitStart(i, route, body, msg) {
+  const r = await act(route, { ...body, ...proposedSize() }, msg);
+  if (r && r.id) {
+    split.slots[i] = { tid: r.id, sid: body.sessionId || null };
+    saveSplit();
+    getTerm(r.id);
+    sKey = null;
+  }
+  renderSplit();
+  return r;
+}
+
+$('#sPanes').addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-i]');
+  if (!sel) return;
+  const i = Number(sel.dataset.i);
+  const v = sel.value;
+  sel.blur();
+  const kind = v.slice(0, 1);
+  const arg = v.slice(2);
+  if (!v) split.slots[i] = null;
+  else if (kind === 't') { const t = S.terminals.list.find((x) => x.id === arg); split.slots[i] = { tid: arg, sid: (t && t.sessionId) || null }; }
+  else if (kind === 'w') { sel.disabled = true; await splitStart(i, '/api/move', { sessionId: arg }, `Moving it out of ${WT} into this pane…`); return; }
+  else if (kind === 's') { sel.disabled = true; await splitStart(i, '/api/resume', { sessionId: arg }, 'Reopening it here…'); return; }
+  else if (kind === 'n') { const f = S.folders[Number(arg)]; if (!f) return; sel.disabled = true; await splitStart(i, '/api/new', { cwd: f }, 'Starting Claude here…'); return; }
+  saveSplit();
+  sKey = null;
+  renderSplit();
+});
+
 $('#gMsgs').addEventListener('click', (e) => { const m = e.target.closest('.g-msg'); if (m) m.classList.toggle('open'); });
-NARROW.addEventListener('change', () => { gKey = null; if (view === 'group') renderGroup(); });
+NARROW.addEventListener('change', () => { gKey = null; sKey = null; if (view === 'group') renderGroup(); if (view === 'split') renderSplit(); });
 
 function openPop(btn, html) {
   const m = $('#pmenu');
@@ -3255,6 +3426,7 @@ function render() {
   showUpdate(false);
   if (view === 'term') return renderTermBar();
   if (view === 'group') return renderGroup();
+  if (view === 'split') return renderSplit();
   if (view === 'context') return renderPlanUsage();
   if (view !== 'overview') return;
   renderBanner();
@@ -3282,6 +3454,7 @@ function refresh() {
           terms.delete(id);
           if (current === id) { current = null; if (view === 'term') go('overview'); }
           gKey = null;
+          sKey = null;
         }
       }
       if (projFilter && !project(projFilter)) projFilter = null;
@@ -3377,6 +3550,20 @@ document.addEventListener('click', async (e) => {
       try { await navigator.share({ title: 'Claude Sessions', text: shareText() }); } catch (e) { if (e && e.name !== 'AbortError') copyPlain(shareText(), 'Sharing is not available here, so the message was copied'); }
       break;
     case 'go': go(b.dataset.view, b.dataset.arg); break;
+    case 's-n': split.n = Number(b.dataset.v); saveSplit(); renderSplit(); break;
+    case 's-lay': split.layout = b.dataset.v; saveSplit(); renderSplit(); break;
+    case 's-reopen': {
+      const i = Number(b.dataset.i);
+      const t = slotTerm(i);
+      const sid = (t && t.sessionId) || (split.slots[i] || {}).sid;
+      if (!sid) break;
+      b.disabled = true;
+      const old = t && t.exited ? t.id : null;
+      const r = await splitStart(i, '/api/resume', { sessionId: sid }, 'Reopening it here…');
+      if (r && r.id && old) api('/api/term/forget', { id: old }).catch(() => {});
+      if (!r) b.disabled = false;
+      break;
+    }
     case 'open': show(b.dataset.tid); break;
     case 'focus': b.disabled = true; await act('/api/focus', { sessionId: id }); b.disabled = false; break;
     case 'move': b.disabled = true; await openNew('/api/move', { sessionId: id }, 'Moving into the app…'); break;
@@ -3619,6 +3806,7 @@ function route() {
   if ((m = /^(wiki|skills)(?:\/([0-9a-f]{12}))?$/.exec(h))) return go(m[1], m[2]);
   if (h === 'context') return go('context');
   if ((m = /^g\/([0-9a-f-]{36})$/.exec(h)) && groupById(m[1])) return go('group', m[1]);
+  if (h === 'split') return go('split');
   go('overview');
 }
 
